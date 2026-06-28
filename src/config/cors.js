@@ -15,7 +15,8 @@ export const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // Don't error — widget routes set their own CORS headers before this runs
+      callback(null, false);
     }
   },
   credentials: true,

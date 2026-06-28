@@ -21,6 +21,23 @@ import { analyticsRoutes } from './modules/analytics/analytics.routes.js';
 
 const app = express();
 
+// ─── Widget CORS (permissive — called from customer websites) ───
+// Must run before global CORS to handle preflight and set headers
+app.use('/v1/widget', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+app.use('/v1/feedback/widget', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 // ─── Global Middleware ───
 app.use(helmet());
 app.use(cors(corsOptions));
