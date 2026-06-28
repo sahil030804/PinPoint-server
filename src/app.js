@@ -21,6 +21,8 @@ import { analyticsRoutes } from './modules/analytics/analytics.routes.js';
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 // ─── Widget CORS (permissive — called from customer websites) ───
 // Must run before global CORS to handle preflight and set headers
 app.use('/v1/widget', (req, res, next) => {
