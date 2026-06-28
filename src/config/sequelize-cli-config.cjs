@@ -3,6 +3,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const dbConfig = {
   development: {
+    url: process.env.DATABASE_URL,
     username: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'pinpoint_dev',
@@ -12,6 +13,7 @@ const dbConfig = {
     logging: true,
   },
   test: {
+    url: process.env.DATABASE_URL,
     username: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME ? `${process.env.DB_NAME}_test` : 'pinpoint_test',
@@ -21,6 +23,7 @@ const dbConfig = {
     logging: false,
   },
   production: {
+    url:process.env.DATABASE_URL,
     username: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,

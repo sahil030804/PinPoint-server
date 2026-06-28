@@ -1,8 +1,18 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+const hasDbUrl = !!process.env.DATABASE_URL;
+const hasIndividualDb = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']
+  .every((key) => !!process.env[key]);
+
+if (!hasDbUrl && !hasIndividualDb) {
+  console.error(
+    'Missing database config: provide DATABASE_URL or all of DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD'
+  );
+  process.exit(1);
+}
+
 const required = [
-  'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD',
   'REDIS_URL',
   'AUTH_SECRET',
 ];
