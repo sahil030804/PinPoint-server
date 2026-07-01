@@ -29,7 +29,7 @@ export const env = {
   nodeEnv,
   port: parseInt(process.env.PORT, 10) || 4000,
   isDev: nodeEnv === 'development',
-  isProd: process.env.NODE_ENV === 'production',
+  isProd: nodeEnv === 'production',
 
   db: {
     host: process.env.DB_HOST,

@@ -4,7 +4,6 @@ import { env } from '../../config/env.js';
 import { logger } from '../middleware/requestLogger.js';
 
 const isConfigured = !!(env.r2.endpoint && env.r2.accessKeyId && env.r2.secretAccessKey && env.r2.bucket);
-const isDev = env.isDev;
 
 let client = null;
 if (isConfigured) {
