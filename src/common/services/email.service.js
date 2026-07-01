@@ -1,14 +1,46 @@
+import nodemailer from 'nodemailer';
 import { env } from '../../config/env.js';
 import { logger } from '../middleware/requestLogger.js';
 
 const RESEND_API_KEY = env.resend.apiKey;
-const FROM = env.resend.from || 'noreply@pinpoint.dev';
 const APP_URL = env.auth.appUrl || 'http://localhost:3000';
 
 export class EmailService {
+  constructor() {
+    this.nodemailerTransporter = null;
+    if (env.email.driver === 'smtp' && env.smtp.user && env.smtp.pass) {
+      this.nodemailerTransporter = nodemailer.createTransport({
+        host: env.smtp.host || 'smtp.gmail.com',
+        port: env.smtp.port || 587,
+        secure: false,
+        auth: { user: env.smtp.user, pass: env.smtp.pass },
+      });
+    }
+  }
+
   async send({ to, subject, html }) {
+    const FROM = env.email.from;
+
+    // ─── SMTP path (default) ───
+    if (this.nodemailerTransporter) {
+      try {
+        const info = await this.nodemailerTransporter.sendMail({
+          from: FROM,
+          to: Array.isArray(to) ? to : [to],
+          subject,
+          html,
+        });
+        logger.info({ to, subject, messageId: info.messageId }, '[Email] Sent via SMTP');
+        return info;
+      } catch (err) {
+        logger.error({ err: err.message }, '[Email] SMTP send failed');
+        return null;
+      }
+    }
+
+    // ─── Resend path (fallback) ───
     if (!RESEND_API_KEY) {
-      logger.warn('[Email] RESEND_API_KEY not configured — skipping email send');
+      logger.warn('[Email] No email driver configured — skipping');
       return null;
     }
 
@@ -34,10 +66,10 @@ export class EmailService {
         return null;
       }
 
-      logger.info({ to, subject }, '[Email] Sent successfully');
+      logger.info({ to, subject }, '[Email] Sent via Resend');
       return data;
     } catch (err) {
-      logger.error({ err: err.message }, '[Email] Send error');
+      logger.error({ err: err.message }, '[Email] Resend send error');
       return null;
     }
   }

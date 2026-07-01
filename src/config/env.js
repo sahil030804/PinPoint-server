@@ -51,6 +51,18 @@ export const env = {
     encryptionKey: process.env.API_KEY_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef',
   },
 
+  email: {
+    driver: process.env.EMAIL_DRIVER || 'smtp',
+    from: process.env.EMAIL_FROM || 'noreply@pinpoint.dev',
+  },
+
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT, 10) || 587,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+
   resend: {
     apiKey: process.env.RESEND_API_KEY,
     from: process.env.EMAIL_FROM || 'noreply@pinpoint.dev',
