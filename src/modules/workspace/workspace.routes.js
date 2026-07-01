@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { Op } from 'sequelize';
-import { Workspace, WorkspaceMember, User, Invitation } from '../../database/models/index.js';
+import { Op, Sequelize } from 'sequelize';
+import { Workspace, WorkspaceMember, User, Invitation, Feedback, Website, Project } from '../../database/models/index.js';
 import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success, error } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
@@ -12,6 +12,7 @@ import { requireWorkspaceAccess } from '../../common/middleware/authorizeWorkspa
 import { authorize } from '../../common/middleware/authorize.js';
 import { emailService } from '../../common/services/email.service.js';
 import { env } from '../../config/env.js';
+import { PLAN_LIMITS } from '../../common/plan.js';
 
 const router = Router();
 router.use(authenticate);
@@ -87,11 +88,63 @@ router.post('/', validate(createWorkspaceSchema), asyncHandler(async (req, res) 
   res.status(201).json(success(workspace));
 }));
 
-// Get workspace by ID
+// Get workspace by ID (includes plan info and limits)
 router.get('/:id', requireWorkspaceAccess, asyncHandler(async (req, res) => {
   const workspace = await Workspace.findByPk(req.params.id);
   if (!workspace) throw new NotFoundError('Workspace not found');
-  res.json(success(workspace));
+  const planLimits = PLAN_LIMITS[workspace.plan] || PLAN_LIMITS.free;
+  res.json(success({
+    ...workspace.toJSON(),
+    planLimits,
+  }));
+}));
+
+// Get workspace usage stats
+router.get('/:id/stats', requireWorkspaceAccess, asyncHandler(async (req, res) => {
+  const workspace = await Workspace.findByPk(req.params.id, {
+    attributes: ['id', 'plan', 'feedbackMonthlyCount', 'feedbackLimitResetAt'],
+  });
+  if (!workspace) throw new NotFoundError('Workspace not found');
+
+  const now = new Date();
+  const resetAt = workspace.feedbackLimitResetAt;
+  if (!resetAt || resetAt <= now) {
+    await workspace.update({
+      feedbackMonthlyCount: 0,
+      feedbackLimitResetAt: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    });
+    workspace.feedbackMonthlyCount = 0;
+  }
+
+  const planLimits = PLAN_LIMITS[workspace.plan] || PLAN_LIMITS.free;
+  const feedbackCount = await Feedback.count({
+    include: [{
+      model: Website,
+      include: [{ model: Project, where: { workspaceId: req.params.id } }],
+    }],
+  });
+
+  const websiteCount = await Website.count({
+    include: [{
+      model: Project,
+      where: { workspaceId: req.params.id },
+    }],
+  });
+
+  const memberCount = await WorkspaceMember.count({
+    where: { workspaceId: req.params.id },
+  });
+
+  res.json(success({
+    plan: workspace.plan,
+    planLimits,
+    usage: {
+      feedback: { current: workspace.feedbackMonthlyCount, limit: planLimits.feedbackPerMonth },
+      websites: { current: websiteCount, limit: planLimits.websitesPerWorkspace },
+      members: { current: memberCount, limit: planLimits.membersPerWorkspace },
+    },
+    feedbackLimitResetAt: workspace.feedbackLimitResetAt,
+  }));
 }));
 
 // Update workspace
@@ -123,6 +176,20 @@ router.get('/:id/members', requireWorkspaceAccess, asyncHandler(async (req, res)
 
 // Invite member
 router.post('/:id/members', requireWorkspaceAccess, authorize('owner', 'admin'), validate(inviteMemberSchema), asyncHandler(async (req, res) => {
+  const workspace = await Workspace.findByPk(req.params.id);
+  if (!workspace) throw new NotFoundError('Workspace not found');
+
+  const planLimits = PLAN_LIMITS[workspace.plan] || PLAN_LIMITS.free;
+  if (planLimits.membersPerWorkspace !== Infinity) {
+    const memberCount = await WorkspaceMember.count({ where: { workspaceId: req.params.id } });
+    if (memberCount >= planLimits.membersPerWorkspace) {
+      return res.status(429).json({
+        success: false,
+        error: { code: 'USAGE_LIMIT_EXCEEDED', message: 'Team member limit reached. Upgrade to Pro for unlimited members.' },
+      });
+    }
+  }
+
   const existingUser = await User.findOne({ where: { email: req.body.email } });
 
   if (existingUser) {
