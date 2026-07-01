@@ -3,12 +3,12 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Op } from 'sequelize';
 import { env } from '../../config/env.js';
-import { User, Workspace, WorkspaceMember } from '../../database/models/index.js';
+import { User, Workspace, WorkspaceMember, Invitation } from '../../database/models/index.js';
 import { ConflictError, AuthenticationError, BadRequestError } from '../../common/errors/AppError.js';
 import { slugify } from '../../common/utils/slugify.js';
 
 export class AuthService {
-  async register({ email, password, name }) {
+  async register({ email, password, name, invitationId }) {
     const existing = await User.findOne({ where: { email } });
     if (existing) {
       throw new ConflictError('Email already registered');
@@ -22,9 +22,26 @@ export class AuthService {
       passwordHash,
     });
 
-    const token = this.generateToken(user, null);
+    let workspaceId = null;
+    let role = null;
 
-    return { user: this.sanitizeUser(user), token };
+    if (invitationId) {
+      const invitation = await Invitation.findByPk(invitationId);
+      if (invitation && invitation.email === email && invitation.status === 'pending') {
+        await WorkspaceMember.create({
+          workspaceId: invitation.workspaceId,
+          userId: user.id,
+          role: invitation.role,
+        });
+        await invitation.update({ status: 'accepted', acceptedAt: new Date() });
+        workspaceId = invitation.workspaceId;
+        role = invitation.role;
+      }
+    }
+
+    const token = this.generateToken(user, workspaceId);
+
+    return { user: this.sanitizeUser(user, workspaceId, role), token };
   }
 
   async login({ email, password }) {
