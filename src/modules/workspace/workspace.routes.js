@@ -14,6 +14,51 @@ import { authorize } from '../../common/middleware/authorize.js';
 const router = Router();
 router.use(authenticate);
 
+// ─── Invitations (must be before /:id to avoid matching 'invitations' as a UUID) ───
+
+// Get pending invitations for the current user
+router.get('/invitations', asyncHandler(async (req, res) => {
+  const invitations = await Invitation.findAll({
+    where: { email: req.user.email, status: 'pending' },
+    include: [{ model: Workspace, attributes: ['id', 'name', 'slug'] }],
+    order: [['createdAt', 'DESC']],
+  });
+  res.json(success(invitations));
+}));
+
+// Accept invitation
+router.post('/invitations/:id/accept', asyncHandler(async (req, res) => {
+  const invitation = await Invitation.findByPk(req.params.id);
+  if (!invitation) throw new NotFoundError('Invitation not found');
+  if (invitation.email !== req.user.email) throw new AuthorizationError('This invitation is not for you');
+  if (invitation.status !== 'pending') throw new ConflictError('Invitation is no longer pending');
+
+  const existing = await WorkspaceMember.findOne({
+    where: { workspaceId: invitation.workspaceId, userId: req.user.id },
+  });
+  if (!existing) {
+    await WorkspaceMember.create({
+      workspaceId: invitation.workspaceId,
+      userId: req.user.id,
+      role: invitation.role,
+    });
+  }
+
+  await invitation.update({ status: 'accepted', acceptedAt: new Date() });
+  res.json(success({ message: 'Invitation accepted' }));
+}));
+
+// Reject invitation
+router.post('/invitations/:id/reject', asyncHandler(async (req, res) => {
+  const invitation = await Invitation.findByPk(req.params.id);
+  if (!invitation) throw new NotFoundError('Invitation not found');
+  if (invitation.email !== req.user.email) throw new AuthorizationError('This invitation is not for you');
+  if (invitation.status !== 'pending') throw new ConflictError('Invitation is no longer pending');
+
+  await invitation.update({ status: 'rejected' });
+  res.json(success({ message: 'Invitation rejected' }));
+}));
+
 // List workspaces for the current user
 router.get('/', asyncHandler(async (req, res) => {
   const memberships = await WorkspaceMember.findAll({
@@ -110,49 +155,6 @@ router.post('/:id/members', requireWorkspaceAccess, authorize('owner', 'admin'),
   }
 
   res.status(201).json(success({ invitation, message: 'Invitation sent. User will be added when they register and accept.' }));
-}));
-
-// Get pending invitations for the current user
-router.get('/invitations', authenticate, asyncHandler(async (req, res) => {
-  const invitations = await Invitation.findAll({
-    where: { email: req.user.email, status: 'pending' },
-    include: [{ model: Workspace, attributes: ['id', 'name', 'slug'] }],
-    order: [['createdAt', 'DESC']],
-  });
-  res.json(success(invitations));
-}));
-
-// Accept invitation
-router.post('/invitations/:id/accept', authenticate, asyncHandler(async (req, res) => {
-  const invitation = await Invitation.findByPk(req.params.id);
-  if (!invitation) throw new NotFoundError('Invitation not found');
-  if (invitation.email !== req.user.email) throw new AuthorizationError('This invitation is not for you');
-  if (invitation.status !== 'pending') throw new ConflictError('Invitation is no longer pending');
-
-  const existing = await WorkspaceMember.findOne({
-    where: { workspaceId: invitation.workspaceId, userId: req.user.id },
-  });
-  if (!existing) {
-    await WorkspaceMember.create({
-      workspaceId: invitation.workspaceId,
-      userId: req.user.id,
-      role: invitation.role,
-    });
-  }
-
-  await invitation.update({ status: 'accepted', acceptedAt: new Date() });
-  res.json(success({ message: 'Invitation accepted' }));
-}));
-
-// Reject invitation
-router.post('/invitations/:id/reject', authenticate, asyncHandler(async (req, res) => {
-  const invitation = await Invitation.findByPk(req.params.id);
-  if (!invitation) throw new NotFoundError('Invitation not found');
-  if (invitation.email !== req.user.email) throw new AuthorizationError('This invitation is not for you');
-  if (invitation.status !== 'pending') throw new ConflictError('Invitation is no longer pending');
-
-  await invitation.update({ status: 'rejected' });
-  res.json(success({ message: 'Invitation rejected' }));
 }));
 
 // Update member role
