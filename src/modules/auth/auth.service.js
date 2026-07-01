@@ -1,5 +1,7 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { Op } from 'sequelize';
 import { env } from '../../config/env.js';
 import { User, Workspace, WorkspaceMember } from '../../database/models/index.js';
 import { ConflictError, AuthenticationError, BadRequestError } from '../../common/errors/AppError.js';
@@ -86,6 +88,64 @@ export class AuthService {
     }
 
     await user.increment('tokenVersion', { by: 1 });
+  }
+
+  async forgotPassword({ email }) {
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return { ok: true };
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const hash = await bcrypt.hash(token, 10);
+
+    await user.update({
+      resetTokenHash: hash,
+      resetTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+
+    return { ok: true, resetToken: token, email: user.email };
+  }
+
+  async resetPassword({ token, password }) {
+    const users = await User.findAll({
+      where: {
+        resetTokenHash: { [Op.ne]: null },
+        resetTokenExpiresAt: { [Op.gte]: new Date() },
+      },
+    });
+
+    let matchedUser = null;
+    for (const u of users) {
+      const valid = await bcrypt.compare(token, u.resetTokenHash);
+      if (valid) {
+        matchedUser = u;
+        break;
+      }
+    }
+
+    if (!matchedUser) {
+      throw new BadRequestError('Invalid or expired reset token');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await matchedUser.update({
+      passwordHash,
+      resetTokenHash: null,
+      resetTokenExpiresAt: null,
+      tokenVersion: matchedUser.tokenVersion + 1,
+    });
+
+    const membership = await WorkspaceMember.findOne({
+      where: { userId: matchedUser.id },
+    });
+
+    const jwtToken = this.generateToken(matchedUser, membership?.workspaceId);
+
+    return {
+      user: this.sanitizeUser(matchedUser, membership?.workspaceId, membership?.role),
+      token: jwtToken,
+    };
   }
 
   generateToken(user, workspaceId) {

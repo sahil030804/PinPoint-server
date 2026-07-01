@@ -3,7 +3,7 @@ import { authController } from './auth.controller.js';
 import { validate } from '../../common/middleware/validate.js';
 import { authenticate, authenticateRefresh } from '../../common/middleware/authenticate.js';
 import { createRateLimiter } from '../../common/middleware/rateLimiter.js';
-import { registerSchema, loginSchema, updateProfileSchema } from './auth.validation.js';
+import { registerSchema, loginSchema, updateProfileSchema, forgotPasswordSchema, resetPasswordSchema } from './auth.validation.js';
 
 const router = Router();
 
@@ -19,5 +19,7 @@ router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.me);
 router.put('/me', authenticate, validate(updateProfileSchema), authController.updateProfile);
 router.post('/refresh', authenticateRefresh, authController.refresh);
+router.post('/forgot-password', validate(forgotPasswordSchema), authController.forgotPassword);
+router.post('/reset-password/:token', validate(resetPasswordSchema), authController.resetPassword);
 
 export { router as authRoutes };

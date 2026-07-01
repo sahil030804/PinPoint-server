@@ -13,6 +13,8 @@ import { requireWorkspaceAccess, requireWebsiteAccess, requireFeedbackAccess } f
 import { authorize } from '../../common/middleware/authorize.js';
 import { cacheService } from '../../common/services/cache.service.js';
 import { notificationService } from '../../common/services/notification.service.js';
+import { screenshotService } from '../../common/services/screenshot.service.js';
+import { emailService } from '../../common/services/email.service.js';
 
 const router = Router();
 
@@ -67,6 +69,53 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
 
     return fb;
   });
+
+  // ─── Screenshot upload (fire-and-forget) ───
+  const screenshotClientUrl = req.body.screenshot;
+  if (screenshotClientUrl && typeof screenshotClientUrl === 'string') {
+    const serverUrl = await screenshotService.uploadScreenshot(
+      screenshotClientUrl, project.workspaceId, feedback.id
+    );
+    if (serverUrl) {
+      await feedback.update({ screenshot: { clientUrl: screenshotClientUrl, serverUrl } });
+    }
+  }
+
+  // ─── Duplicate detection ───
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+  const duplicates = await Feedback.findAll({
+    where: {
+      pageUrl: feedback.pageUrl,
+      id: { [Op.ne]: feedback.id },
+      createdAt: { [Op.gte]: thirtyMinAgo },
+    },
+  });
+
+  const feedbackCoords = feedback.coordinates;
+  let duplicateOf = null;
+  if (feedbackCoords?.x != null && feedbackCoords?.y != null) {
+    for (const potential of duplicates) {
+      const c = potential.coordinates;
+      if (c?.x != null && c?.y != null) {
+        const dist = Math.sqrt(
+          (feedbackCoords.x - c.x) ** 2 + (feedbackCoords.y - c.y) ** 2
+        );
+        if (dist <= 50) {
+          duplicateOf = potential.id;
+          break;
+        }
+      }
+    }
+  }
+
+  if (duplicateOf) {
+    await feedback.update({ duplicateOf });
+    await ActivityLog.create({
+      feedbackId: feedback.id,
+      action: 'duplicate_marked',
+      metadata: { duplicateOf },
+    });
+  }
 
   const activity = await ActivityLog.findOne({
     where: { feedbackId: feedback.id, action: 'created' },
@@ -339,6 +388,18 @@ router.put('/:id', requireFeedbackAccess, validate(updateFeedbackSchema), asyncH
       actorId: req.user.id,
       projectId,
     });
+
+    const assigneeUser = await User.findByPk(req.body.assigneeId, { attributes: ['email', 'name'] });
+    if (assigneeUser?.email) {
+      emailService.sendAssignmentEmail({
+        toEmail: assigneeUser.email,
+        toName: assigneeUser.name,
+        feedbackTitle: feedback.title || feedback.comment,
+        feedbackId: feedback.id,
+        projectId,
+        assignerName: req.user.name,
+      });
+    }
   }
 
   if (req.body.status) {
@@ -347,6 +408,21 @@ router.put('/:id', requireFeedbackAccess, validate(updateFeedbackSchema), asyncH
       actorId: req.user.id,
       projectId,
     });
+
+    if (feedback.assigneeId) {
+      const assigneeUser = await User.findByPk(feedback.assigneeId, { attributes: ['email', 'name'] });
+      if (assigneeUser?.email) {
+        emailService.sendStatusChangeEmail({
+          toEmail: assigneeUser.email,
+          toName: assigneeUser.name,
+          feedbackTitle: feedback.title || feedback.comment,
+          feedbackId: feedback.id,
+          projectId,
+          newStatus: req.body.status,
+          changerName: req.user.name,
+        });
+      }
+    }
   }
 
   await cacheService.invalidate(`feedback:workspace:${wsId}`);

@@ -9,6 +9,7 @@ import { initActivityLogModel } from './ActivityLog.model.js';
 import { initCommentModel } from './Comment.model.js';
 import { initNotificationModel } from './Notification.model.js';
 import { initApiKeyModel } from './ApiKey.model.js';
+import { initInvitationModel } from './Invitation.model.js';
 
 // Initialize all models
 const Workspace = initWorkspaceModel(sequelize);
@@ -21,6 +22,7 @@ const ActivityLog = initActivityLogModel(sequelize);
 const Comment = initCommentModel(sequelize);
 const Notification = initNotificationModel(sequelize);
 const ApiKey = initApiKeyModel(sequelize);
+const Invitation = initInvitationModel(sequelize);
 
 // ─── Associations ───
 
@@ -75,6 +77,10 @@ Notification.belongsTo(User, { foreignKey: 'user_id' });
 Workspace.hasMany(ApiKey, { foreignKey: 'workspace_id', onDelete: 'CASCADE' });
 ApiKey.belongsTo(Workspace, { foreignKey: 'workspace_id' });
 
+// Invitations
+Workspace.hasMany(Invitation, { foreignKey: 'workspace_id', onDelete: 'CASCADE' });
+Invitation.belongsTo(Workspace, { foreignKey: 'workspace_id' });
+
 // ActivityLog → User (actor)
 ActivityLog.belongsTo(User, { as: 'actor', foreignKey: 'actor_id' });
 
@@ -93,4 +99,5 @@ export {
   Comment,
   Notification,
   ApiKey,
+  Invitation,
 };

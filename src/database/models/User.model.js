@@ -35,6 +35,16 @@ export function initUserModel(sequelize) {
       field: 'email_verified_at',
       allowNull: true,
     },
+    resetTokenHash: {
+      type: DataTypes.STRING(255),
+      field: 'reset_token_hash',
+      allowNull: true,
+    },
+    resetTokenExpiresAt: {
+      type: DataTypes.DATE,
+      field: 'reset_token_expires_at',
+      allowNull: true,
+    },
   }, {
     tableName: 'users',
     timestamps: true,

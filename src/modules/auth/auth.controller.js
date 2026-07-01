@@ -1,6 +1,14 @@
 import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authService } from './auth.service.js';
+import { emailService } from '../../common/services/email.service.js';
+import { createRateLimiter } from '../../common/middleware/rateLimiter.js';
+
+const forgotPasswordLimiter = createRateLimiter({
+  windowMs: 3600000,
+  max: 3,
+  message: 'Too many password reset requests, please try again later',
+});
 
 export const authController = {
   register: asyncHandler(async (req, res) => {
@@ -41,5 +49,27 @@ export const authController = {
   logout: asyncHandler(async (req, res) => {
     await authService.invalidateSessions(req.user.id);
     res.json(success({ message: 'Logged out successfully' }));
+  }),
+
+  forgotPassword: [
+    forgotPasswordLimiter,
+    asyncHandler(async (req, res) => {
+      const result = await authService.forgotPassword(req.body);
+      if (result.resetToken) {
+        emailService.sendPasswordResetEmail({
+          toEmail: result.email,
+          resetToken: result.resetToken,
+        });
+      }
+      res.json(success({ message: 'If the email exists, a reset link has been sent.' }));
+    }),
+  ],
+
+  resetPassword: asyncHandler(async (req, res) => {
+    const result = await authService.resetPassword({
+      token: req.params.token,
+      password: req.body.password,
+    });
+    res.json(success(result));
   }),
 };
