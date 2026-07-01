@@ -56,7 +56,7 @@ export const authController = {
     asyncHandler(async (req, res) => {
       const result = await authService.forgotPassword(req.body);
       if (result.resetToken) {
-        emailService.sendPasswordResetEmail({
+        await emailService.sendPasswordResetEmail({
           toEmail: result.email,
           resetToken: result.resetToken,
         });

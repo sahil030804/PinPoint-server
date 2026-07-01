@@ -8,6 +8,7 @@ import { addCommentSchema } from '../auth/auth.validation.js';
 import { NotFoundError } from '../../common/errors/AppError.js';
 import { requireFeedbackAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { notificationService } from '../../common/services/notification.service.js';
+import { emailService } from '../../common/services/email.service.js';
 
 const router = Router();
 router.use(authenticate);
@@ -65,6 +66,19 @@ router.post('/feedback/:feedbackId', requireFeedbackAccess, validate(addCommentS
     actorId: req.user.id,
     projectId,
   });
+
+  const feedbackAuthor = await User.findByPk(feedback.reporterId, { attributes: ['email', 'name'] });
+  if (feedbackAuthor?.email && feedbackAuthor.email !== req.user.email) {
+    await emailService.sendCommentEmail({
+      toEmail: feedbackAuthor.email,
+      toName: feedbackAuthor.name,
+      feedbackTitle: feedback.title || feedback.comment,
+      feedbackId: feedback.id,
+      projectId,
+      commentPreview: req.body.body.slice(0, 200),
+      commenterName: req.user.name,
+    });
+  }
 
   res.status(201).json(success(comment.comment));
 }));
