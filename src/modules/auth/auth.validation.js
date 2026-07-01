@@ -97,6 +97,35 @@ export const inviteMemberSchema = z.object({
   role: z.enum(['admin', 'developer', 'viewer', 'client']).optional(),
 });
 
+export const updateProfileSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(255).optional(),
+  avatarUrl: z.string().url('Invalid URL').nullable().optional(),
+});
+
 export const updateMemberSchema = z.object({
   role: z.enum(['admin', 'developer', 'viewer', 'client']),
+});
+
+export const updateWorkspaceSchema = z.object({
+  name: z.string().min(1, 'Workspace name is required').max(255).optional(),
+  logoUrl: z.string().url('Invalid URL').nullable().optional(),
+  theme: z.object({}).passthrough().optional(),
+});
+
+export const updateProjectSchema = z.object({
+  name: z.string().min(1, 'Project name is required').max(255).optional(),
+  description: z.string().nullable().optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Invalid hex color').optional(),
+});
+
+export const updateWebsiteSchema = z.object({
+  url: z.string().url('Invalid URL').optional(),
+  isActive: z.boolean().optional(),
+  widgetConfig: z.object({
+    position: z.enum(['bottom-right', 'bottom-left', 'top-right', 'top-left']).optional(),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    buttonText: z.string().max(50).optional(),
+    icon: z.enum(['chat', 'bug', 'feedback']).optional(),
+    darkMode: z.boolean().optional(),
+  }).optional(),
 });

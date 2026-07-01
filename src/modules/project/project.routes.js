@@ -4,7 +4,7 @@ import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
-import { createProjectSchema } from '../auth/auth.validation.js';
+import { createProjectSchema, updateProjectSchema } from '../auth/auth.validation.js';
 import { NotFoundError } from '../../common/errors/AppError.js';
 import { requireWorkspaceAccess, requireProjectAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { authorize } from '../../common/middleware/authorize.js';
@@ -38,7 +38,7 @@ router.get('/:id', requireProjectAccess, asyncHandler(async (req, res) => {
 }));
 
 // Update project
-router.put('/:id', requireProjectAccess, authorize('owner', 'admin', 'developer'), asyncHandler(async (req, res) => {
+router.put('/:id', requireProjectAccess, authorize('owner', 'admin', 'developer'), validate(updateProjectSchema), asyncHandler(async (req, res) => {
   const project = await Project.findByPk(req.params.id);
   if (!project) throw new NotFoundError('Project not found');
   await project.update(req.body);

@@ -4,7 +4,7 @@ import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
-import { addWebsiteSchema } from '../auth/auth.validation.js';
+import { addWebsiteSchema, updateWebsiteSchema } from '../auth/auth.validation.js';
 import { NotFoundError } from '../../common/errors/AppError.js';
 import { requireProjectAccess, requireWebsiteAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { authorize } from '../../common/middleware/authorize.js';
@@ -39,7 +39,7 @@ router.get('/:id', requireWebsiteAccess, asyncHandler(async (req, res) => {
 }));
 
 // Update website config
-router.put('/:id', requireWebsiteAccess, authorize('owner', 'admin', 'developer'), asyncHandler(async (req, res) => {
+router.put('/:id', requireWebsiteAccess, authorize('owner', 'admin', 'developer'), validate(updateWebsiteSchema), asyncHandler(async (req, res) => {
   const website = await Website.findByPk(req.params.id);
   if (!website) throw new NotFoundError('Website not found');
   await website.update(req.body);

@@ -60,6 +60,25 @@ export class AuthService {
     return { user: this.sanitizeUser(user, membership?.workspaceId, membership?.role), token };
   }
 
+  async updateProfile(userId, { name, avatarUrl }) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new AuthenticationError('User not found');
+    }
+
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (avatarUrl !== undefined) updates.avatarUrl = avatarUrl;
+
+    await user.update(updates);
+
+    const membership = await WorkspaceMember.findOne({
+      where: { userId: user.id },
+    });
+
+    return this.sanitizeUser(user, membership?.workspaceId, membership?.role);
+  }
+
   async invalidateSessions(userId) {
     const user = await User.findByPk(userId);
     if (!user) {

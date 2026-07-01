@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { sequelize, Comment, ActivityLog, Feedback, User } from '../../database/models/index.js';
+import { sequelize, Comment, ActivityLog, Feedback, User, Website, Project } from '../../database/models/index.js';
 import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
@@ -7,6 +7,7 @@ import { validate } from '../../common/middleware/validate.js';
 import { addCommentSchema } from '../auth/auth.validation.js';
 import { NotFoundError } from '../../common/errors/AppError.js';
 import { requireFeedbackAccess } from '../../common/middleware/authorizeWorkspace.js';
+import { notificationService } from '../../common/services/notification.service.js';
 
 const router = Router();
 router.use(authenticate);
@@ -25,7 +26,13 @@ router.get('/feedback/:feedbackId', requireFeedbackAccess, asyncHandler(async (r
 
 // Add comment
 router.post('/feedback/:feedbackId', requireFeedbackAccess, validate(addCommentSchema), asyncHandler(async (req, res) => {
-  const feedback = await Feedback.findByPk(req.params.feedbackId);
+  const feedback = await Feedback.findByPk(req.params.feedbackId, {
+    include: [{
+      model: Website,
+      attributes: ['id', 'projectId'],
+      include: [{ model: Project, attributes: ['id', 'workspaceId'] }],
+    }],
+  });
   if (!feedback) throw new NotFoundError('Feedback not found');
 
   const comment = await sequelize.transaction(async (tx) => {
@@ -35,17 +42,31 @@ router.post('/feedback/:feedbackId', requireFeedbackAccess, validate(addCommentS
       body: req.body.body,
     }, { transaction: tx });
 
-    await ActivityLog.create({
+    const activity = await ActivityLog.create({
       feedbackId: req.params.feedbackId,
       actorId: req.user.id,
       action: 'comment_added',
       metadata: { commentId: c.id, preview: req.body.body.slice(0, 100) },
     }, { transaction: tx });
 
-    return c;
+    return { comment: c, activity };
   });
 
-  res.status(201).json(success(comment));
+  const io = req.app.get('io');
+  if (comment.activity) {
+    notificationService.emitActivity(io, req.params.feedbackId, comment.activity);
+  }
+
+  const website = feedback.Website;
+  const projectId = website?.Project?.id;
+  await notificationService.notifyCommentAdded({
+    feedback,
+    comment: comment.comment,
+    actorId: req.user.id,
+    projectId,
+  });
+
+  res.status(201).json(success(comment.comment));
 }));
 
 export { router as commentRoutes };

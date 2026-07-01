@@ -33,6 +33,11 @@ export const authController = {
     res.json(success(result));
   }),
 
+  updateProfile: asyncHandler(async (req, res) => {
+    const result = await authService.updateProfile(req.user.id, req.body);
+    res.json(success(result));
+  }),
+
   logout: asyncHandler(async (req, res) => {
     await authService.invalidateSessions(req.user.id);
     res.json(success({ message: 'Logged out successfully' }));

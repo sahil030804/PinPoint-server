@@ -5,7 +5,7 @@ import { success, error } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { slugify } from '../../common/utils/slugify.js';
-import { createWorkspaceSchema, inviteMemberSchema, updateMemberSchema } from '../auth/auth.validation.js';
+import { createWorkspaceSchema, updateWorkspaceSchema, inviteMemberSchema, updateMemberSchema } from '../auth/auth.validation.js';
 import { NotFoundError, ConflictError, AuthorizationError } from '../../common/errors/AppError.js';
 import { requireWorkspaceAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { authorize } from '../../common/middleware/authorize.js';
@@ -47,7 +47,7 @@ router.get('/:id', requireWorkspaceAccess, asyncHandler(async (req, res) => {
 }));
 
 // Update workspace
-router.put('/:id', requireWorkspaceAccess, authorize('owner', 'admin'), asyncHandler(async (req, res) => {
+router.put('/:id', requireWorkspaceAccess, authorize('owner', 'admin'), validate(updateWorkspaceSchema), asyncHandler(async (req, res) => {
   const workspace = await Workspace.findByPk(req.params.id);
   if (!workspace) throw new NotFoundError('Workspace not found');
   await workspace.update(req.body);

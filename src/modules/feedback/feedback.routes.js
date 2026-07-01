@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { Op } from 'sequelize';
-import { sequelize, Feedback, ActivityLog, User, Website, WorkspaceMember } from '../../database/models/index.js';
+import { Op, Sequelize } from 'sequelize';
+import { sequelize, Feedback, ActivityLog, User, Website, Project, Workspace, WorkspaceMember } from '../../database/models/index.js';
 import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
@@ -12,16 +12,32 @@ import { NotFoundError, AuthorizationError } from '../../common/errors/AppError.
 import { requireWorkspaceAccess, requireWebsiteAccess, requireFeedbackAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { authorize } from '../../common/middleware/authorize.js';
 import { cacheService } from '../../common/services/cache.service.js';
+import { notificationService } from '../../common/services/notification.service.js';
 
 const router = Router();
 
+function getSocketIo(req) {
+  return req.app.get('io');
+}
+
+function buildCacheKey(prefix, params) {
+  const filtered = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') {
+      filtered[k] = v;
+    }
+  }
+  return `${prefix}:${JSON.stringify(filtered)}`;
+}
+
 // ─── Widget endpoint (no auth required) ───
 router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), asyncHandler(async (req, res) => {
-  const { Project } = await import('../../database/models/index.js');
-  const project = await Project.findByPk(req.params.projectId);
+  const project = await Project.findByPk(req.params.projectId, {
+    include: [{ model: Website }],
+  });
   if (!project) throw new NotFoundError('Project not found');
 
-  const website = await Website.findOne({ where: { projectId: project.id } });
+  const website = project.Websites?.[0];
   if (!website) throw new NotFoundError('No website found for this project');
 
   let screenshot = req.body.screenshot;
@@ -52,9 +68,40 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
     return fb;
   });
 
-  await cacheService.invalidate(`feedback:${website.id}`);
+  const activity = await ActivityLog.findOne({
+    where: { feedbackId: feedback.id, action: 'created' },
+    order: [['createdAt', 'DESC']],
+  });
+
+  notificationService.notifyFeedbackCreated({
+    feedback,
+    workspaceId: project.workspaceId,
+    projectId: project.id,
+    actorId: null,
+  });
+
+  const io = getSocketIo(req);
+  if (activity) {
+    notificationService.emitActivity(io, feedback.id, activity);
+  }
+
+  await cacheService.invalidate(`feedback:workspace:${project.workspaceId}`);
+  await cacheService.invalidate(`feedback:website:${website.id}`);
 
   res.status(201).json(success(feedback));
+}));
+
+// Widget config (public)
+router.get('/widget/:projectId/config', asyncHandler(async (req, res) => {
+  const project = await Project.findByPk(req.params.projectId, {
+    include: [{ model: Website }],
+  });
+  if (!project) throw new NotFoundError('Project not found');
+
+  const website = project.Websites?.[0];
+  if (!website) throw new NotFoundError('No website found');
+
+  res.json(success(website.widgetConfig));
 }));
 
 // ─── Authenticated endpoints ───
@@ -63,7 +110,15 @@ router.use(authenticate);
 // ─── Workspace feedback listing ───
 router.get('/workspace/:workspaceId', requireWorkspaceAccess, paginationMiddleware, asyncHandler(async (req, res) => {
   const { page, limit, offset } = req.pagination;
-  const { status, priority, assigneeId, projectId, search } = req.query;
+  const { status, priority, assigneeId, projectId, search, q } = req.query;
+
+  const cacheKey = buildCacheKey('feedback:workspace', {
+    workspaceId: req.params.workspaceId,
+    status, priority, assigneeId, projectId, search, q, page, limit,
+  });
+
+  const cached = await cacheService.get(cacheKey);
+  if (cached) return res.json(success(cached.rows, cached.pagination));
 
   const where = {};
   if (status) {
@@ -74,10 +129,18 @@ router.get('/workspace/:workspaceId', requireWorkspaceAccess, paginationMiddlewa
   if (priority) where.priority = priority;
   if (assigneeId) where.assigneeId = assigneeId;
 
+  const searchTerm = search || q;
+  if (searchTerm) {
+    where[Op.or] = [
+      { title: { [Op.iLike]: `%${searchTerm}%` } },
+      { comment: { [Op.iLike]: `%${searchTerm}%` } },
+      { reporterName: { [Op.iLike]: `%${searchTerm}%` } },
+      { reporterEmail: { [Op.iLike]: `%${searchTerm}%` } },
+    ];
+  }
+
   const projectWhere = { workspaceId: req.params.workspaceId };
   if (projectId) projectWhere.id = projectId;
-
-  const { Project } = await import('../../database/models/index.js');
 
   const { count, rows } = await Feedback.findAndCountAll({
     where,
@@ -88,7 +151,7 @@ router.get('/workspace/:workspaceId', requireWorkspaceAccess, paginationMiddlewa
         attributes: ['id', 'url'],
         include: [{
           model: Project,
-          attributes: ['id', 'name', 'color'],
+          attributes: ['id', 'name', 'color', 'workspaceId'],
           where: projectWhere,
         }],
       },
@@ -100,30 +163,45 @@ router.get('/workspace/:workspaceId', requireWorkspaceAccess, paginationMiddlewa
     offset,
   });
 
-  res.json(success(rows, paginationMeta(count, page, limit)));
+  const pagination = paginationMeta(count, page, limit);
+  await cacheService.set(cacheKey, { rows, pagination }, 300);
+  res.json(success(rows, pagination));
 }));
 
-// Get widget config (public)
-router.get('/widget/:projectId/config', asyncHandler(async (req, res) => {
-  const { Project } = await import('../../database/models/index.js');
-  const project = await Project.findByPk(req.params.projectId);
-  if (!project) throw new NotFoundError('Project not found');
-
-  const website = await Website.findOne({ where: { projectId: project.id } });
-  if (!website) throw new NotFoundError('No website found');
-
-  res.json(success(website.widgetConfig));
-}));
-
-// List feedback for a website
+// ─── Website feedback listing ───
 router.get('/website/:websiteId', requireWebsiteAccess, paginationMiddleware, asyncHandler(async (req, res) => {
   const { page, limit, offset } = req.pagination;
-  const { status, priority, assigneeId, search, tags } = req.query;
+  const { status, priority, assigneeId, search, q, tags } = req.query;
+
+  const cacheKey = buildCacheKey('feedback:website', {
+    websiteId: req.params.websiteId,
+    status, priority, assigneeId, search, q, tags, page, limit,
+  });
+
+  const cached = await cacheService.get(cacheKey);
+  if (cached) return res.json(success(cached.rows, cached.pagination));
 
   const where = { websiteId: req.params.websiteId };
   if (status) where.status = status;
   if (priority) where.priority = priority;
   if (assigneeId) where.assigneeId = assigneeId;
+
+  const searchTerm = search || q;
+  if (searchTerm) {
+    where[Op.or] = [
+      { title: { [Op.iLike]: `%${searchTerm}%` } },
+      { comment: { [Op.iLike]: `%${searchTerm}%` } },
+      { reporterName: { [Op.iLike]: `%${searchTerm}%` } },
+      { reporterEmail: { [Op.iLike]: `%${searchTerm}%` } },
+    ];
+  }
+
+  if (tags) {
+    const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean);
+    if (tagList.length > 0) {
+      where.tags = { [Op.overlap]: tagList };
+    }
+  }
 
   const { count, rows } = await Feedback.findAndCountAll({
     where,
@@ -136,27 +214,33 @@ router.get('/website/:websiteId', requireWebsiteAccess, paginationMiddleware, as
     offset,
   });
 
-  res.json(success(rows, paginationMeta(count, page, limit)));
+  const pagination = paginationMeta(count, page, limit);
+  await cacheService.set(cacheKey, { rows, pagination }, 300);
+  res.json(success(rows, pagination));
 }));
 
-// Get single feedback
+// ─── Get single feedback ───
 router.get('/:id', requireFeedbackAccess, asyncHandler(async (req, res) => {
   const feedback = await Feedback.findByPk(req.params.id, {
     include: [
       { model: User, as: 'assignee', attributes: ['id', 'name', 'email', 'avatarUrl'] },
       { model: User, as: 'reporter', attributes: ['id', 'name', 'email', 'avatarUrl'] },
       { model: Feedback, as: 'duplicate', attributes: ['id', 'title', 'pageUrl', 'status'] },
+      {
+        model: Website,
+        attributes: ['id', 'url', 'projectId'],
+        include: [{ model: Project, attributes: ['id', 'name', 'workspaceId'] }],
+      },
     ],
   });
   if (!feedback) throw new NotFoundError('Feedback not found');
   res.json(success(feedback));
 }));
 
-// Update feedback
+// ─── Update feedback ───
 router.put('/:id', requireFeedbackAccess, validate(updateFeedbackSchema), asyncHandler(async (req, res) => {
   const role = req.membership.role;
 
-  // Field-level permission checks
   if (req.body.annotations !== undefined) {
     if (!['owner', 'admin', 'developer'].includes(role)) {
       throw new AuthorizationError('Only developers and above can annotate screenshots');
@@ -183,9 +267,21 @@ router.put('/:id', requireFeedbackAccess, validate(updateFeedbackSchema), asyncH
     throw new AuthorizationError('Clients and viewers cannot update feedback');
   }
 
+  const io = getSocketIo(req);
+
   const feedback = await sequelize.transaction(async (tx) => {
-    const fb = await Feedback.findByPk(req.params.id, { transaction: tx });
+    const fb = await Feedback.findByPk(req.params.id, {
+      include: [{
+        model: Website,
+        attributes: ['id', 'projectId'],
+        include: [{ model: Project, attributes: ['id', 'workspaceId'] }],
+      }],
+      transaction: tx,
+    });
     if (!fb) throw new NotFoundError('Feedback not found');
+
+    const previousAssigneeId = fb.assigneeId;
+    const previousStatus = fb.status;
 
     const changes = {};
     for (const [key, value] of Object.entries(req.body)) {
@@ -215,26 +311,68 @@ router.put('/:id', requireFeedbackAccess, validate(updateFeedbackSchema), asyncH
         action = 'status_changed';
       }
 
-      await ActivityLog.create({
+      const activity = await ActivityLog.create({
         feedbackId: fb.id,
         actorId: req.user.id,
         action,
         metadata: change,
       }, { transaction: tx });
+
+      if (activity) {
+        notificationService.emitActivity(io, fb.id, activity);
+      }
     }
 
     return fb;
   });
 
-  await cacheService.invalidate(`feedback:${feedback.websiteId}`);
+  const website = feedback.Website || await Website.findByPk(feedback.websiteId, {
+    include: [{ model: Project, attributes: ['id', 'workspaceId'] }],
+  });
+  const projectId = website?.Project?.id || website?.project?.id;
+  const wsId = website?.Project?.workspaceId || website?.project?.workspaceId;
+
+  if (req.body.assigneeId !== undefined && req.body.assigneeId !== null) {
+    await notificationService.notifyFeedbackAssigned({
+      feedback,
+      assigneeId: req.body.assigneeId,
+      actorId: req.user.id,
+      projectId,
+    });
+  }
+
+  if (req.body.status) {
+    await notificationService.notifyFeedbackStatusChanged({
+      feedback,
+      actorId: req.user.id,
+      projectId,
+    });
+  }
+
+  await cacheService.invalidate(`feedback:workspace:${wsId}`);
+  await cacheService.invalidate(`feedback:website:${feedback.websiteId}`);
   res.json(success(feedback));
 }));
 
-// Delete feedback
+// ─── Delete feedback ───
 router.delete('/:id', requireFeedbackAccess, authorize('owner', 'admin', 'developer'), asyncHandler(async (req, res) => {
-  const feedback = await Feedback.findByPk(req.params.id);
+  const feedback = await Feedback.findByPk(req.params.id, {
+    include: [{
+      model: Website,
+      attributes: ['id', 'projectId'],
+      include: [{ model: Project, attributes: ['workspaceId'] }],
+    }],
+  });
   if (!feedback) throw new NotFoundError('Feedback not found');
+
+  const workspaceId = feedback.Website?.Project?.workspaceId;
   await feedback.destroy();
+
+  if (workspaceId) {
+    await cacheService.invalidate(`feedback:workspace:${workspaceId}`);
+  }
+  await cacheService.invalidate(`feedback:website:${feedback.websiteId}`);
+
   res.json(success({ deleted: true }));
 }));
 
