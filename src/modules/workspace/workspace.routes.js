@@ -10,6 +10,8 @@ import { createWorkspaceSchema, updateWorkspaceSchema, inviteMemberSchema, updat
 import { NotFoundError, ConflictError, AuthorizationError } from '../../common/errors/AppError.js';
 import { requireWorkspaceAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { authorize } from '../../common/middleware/authorize.js';
+import { emailService } from '../../common/services/email.service.js';
+import { env } from '../../config/env.js';
 
 const router = Router();
 router.use(authenticate);
@@ -135,12 +137,17 @@ router.post('/:id/members', requireWorkspaceAccess, authorize('owner', 'admin'),
   });
   if (pending) throw new ConflictError('Invitation already sent to this email');
 
-  const invitation = await Invitation.create({
-    workspaceId: req.params.id,
-    invitedByUserId: req.user.id,
-    email: req.body.email,
-    role: req.body.role || 'viewer',
-    status: 'pending',
+  const workspace = await Workspace.findByPk(req.params.id, { attributes: ['name'] });
+  const workspaceName = workspace?.name || 'a workspace';
+  const appUrl = env.auth.appUrl || 'http://localhost:3000';
+  const inviteUrl = `${appUrl}/auth/register?invitation=${invitation.id}`;
+
+  // Send invitation email (fire-and-forget)
+  emailService.sendInvitationEmail({
+    toEmail: req.body.email,
+    workspaceName,
+    invitedByName: req.user.name || 'Someone',
+    inviteUrl,
   });
 
   // If user already exists, automatically add them

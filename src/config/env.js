@@ -53,7 +53,7 @@ export const env = {
 
   email: {
     driver: process.env.EMAIL_DRIVER || 'smtp',
-    from: process.env.EMAIL_FROM || 'noreply@pinpoint.dev',
+    from: process.env.EMAIL_FROM || process.env.SMTP_USER || 'noreply@pinpoint.dev',
   },
 
   smtp: {

@@ -166,6 +166,17 @@ export class EmailService {
     );
     return this.send({ to: toEmail, subject: `[PinPoint] Reset your password` });
   }
+
+  async sendInvitationEmail({ toEmail, workspaceName, invitedByName, inviteUrl }) {
+    const html = this.buildTemplate(
+      `You've been invited to ${workspaceName}`,
+      `<p style="margin:0 0 12px;font-size:14px;color:#374151">${invitedByName || 'Someone'} has invited you to join <strong>${workspaceName}</strong> on PinPoint.</p>
+       <p style="margin:0;font-size:14px;color:#374151">Click the button below to accept the invitation and get started.</p>`,
+      inviteUrl,
+      'Accept Invitation'
+    );
+    return this.send({ to: toEmail, subject: `[PinPoint] You're invited to ${workspaceName}`, html });
+  }
 }
 
 export const emailService = new EmailService();
