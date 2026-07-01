@@ -6,7 +6,7 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
+    "start": "NODE_OPTIONS='--dns-result-order=ipv4first' node src/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate": "npx sequelize-cli db:migrate",
