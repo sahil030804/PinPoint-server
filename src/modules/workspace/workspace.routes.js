@@ -137,6 +137,14 @@ router.post('/:id/members', requireWorkspaceAccess, authorize('owner', 'admin'),
   });
   if (pending) throw new ConflictError('Invitation already sent to this email');
 
+  const invitation = await Invitation.create({
+    workspaceId: req.params.id,
+    invitedByUserId: req.user.id,
+    email: req.body.email,
+    role: req.body.role || 'viewer',
+    status: 'pending',
+  });
+
   const workspace = await Workspace.findByPk(req.params.id, { attributes: ['name'] });
   const workspaceName = workspace?.name || 'a workspace';
   const appUrl = env.auth.appUrl || 'http://localhost:3000';
