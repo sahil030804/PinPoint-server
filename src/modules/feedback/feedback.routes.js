@@ -217,6 +217,84 @@ router.get('/workspace/:workspaceId', requireWorkspaceAccess, paginationMiddlewa
   res.json(success(rows, pagination));
 }));
 
+// ─── CSV Export ───
+router.get('/workspace/:workspaceId/export', requireWorkspaceAccess, asyncHandler(async (req, res) => {
+  const { status, priority, search, q, tags } = req.query;
+
+  const where = {};
+  if (status) {
+    const values = status.split(',').map((s) => s.trim()).filter(Boolean);
+    if (values.length === 1) where.status = values[0];
+    else where.status = { [Op.in]: values };
+  }
+  if (priority) where.priority = priority;
+
+  const searchTerm = search || q;
+  if (searchTerm) {
+    where[Op.or] = [
+      { title: { [Op.iLike]: `%${searchTerm}%` } },
+      { comment: { [Op.iLike]: `%${searchTerm}%` } },
+      { reporterName: { [Op.iLike]: `%${searchTerm}%` } },
+      { reporterEmail: { [Op.iLike]: `%${searchTerm}%` } },
+    ];
+  }
+
+  if (tags) {
+    const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean);
+    if (tagList.length > 0) {
+      where.tags = { [Op.overlap]: tagList };
+    }
+  }
+
+  const projectWhere = { workspaceId: req.params.workspaceId };
+
+  const rows = await Feedback.findAll({
+    where,
+    include: [
+      {
+        model: Website,
+        required: true,
+        attributes: ['id', 'url'],
+        include: [{
+          model: Project,
+          attributes: ['id', 'name', 'color', 'workspaceId'],
+          where: projectWhere,
+        }],
+      },
+      { model: User, as: 'assignee', attributes: ['id', 'name', 'email'] },
+      { model: User, as: 'reporter', attributes: ['id', 'name', 'email'] },
+    ],
+    order: [['createdAt', 'DESC']],
+  });
+
+  const esc = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  };
+
+  const header = 'id,title,comment,status,priority,page_url,reporter_name,reporter_email,assignee_name,tags,created_at,resolved_at,browser,os,device_type,viewport';
+  const csvRows = rows.map((fb) => {
+    const m = fb.metadata || {};
+    const tagStr = Array.isArray(fb.tags) ? fb.tags.join('; ') : (fb.tags || '');
+    return [
+      esc(fb.id), esc(fb.title), esc(fb.comment), esc(fb.status), esc(fb.priority),
+      esc(fb.pageUrl), esc(fb.reporterName || fb.reporter?.name || ''), esc(fb.reporterEmail || fb.reporter?.email || ''),
+      esc(fb.assignee?.name || ''), esc(tagStr),
+      esc(fb.createdAt?.toISOString() || ''), esc(fb.resolvedAt?.toISOString() || ''),
+      esc(m.browser || ''), esc(m.os || ''), esc(m.deviceType || ''), esc(m.viewport || ''),
+    ].join(',');
+  });
+
+  const csv = [header, ...csvRows].join('\n');
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="feedback-export-${Date.now()}.csv"`);
+  res.send(csv);
+}));
+
 // ─── Website feedback listing ───
 router.get('/website/:websiteId', requireWebsiteAccess, paginationMiddleware, asyncHandler(async (req, res) => {
   const { page, limit, offset } = req.pagination;

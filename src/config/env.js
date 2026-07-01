@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+const nodeEnv = process.env.NODE_ENV || 'development';
+
 const hasDbUrl = !!process.env.DATABASE_URL;
 const hasIndividualDb = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']
   .every((key) => !!process.env[key]);
@@ -24,9 +26,9 @@ if (missing.length > 0) {
 }
 
 export const env = {
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv,
   port: parseInt(process.env.PORT, 10) || 4000,
-  isDev: (process.env.NODE_ENV || 'development') === 'development',
+  isDev: nodeEnv === 'development',
   isProd: process.env.NODE_ENV === 'production',
 
   db: {

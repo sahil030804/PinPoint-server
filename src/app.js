@@ -18,6 +18,7 @@ import { timelineRoutes } from './modules/timeline/timeline.routes.js';
 import { commentRoutes } from './modules/comment/comment.routes.js';
 import { notificationRoutes } from './modules/notification/notification.routes.js';
 import { analyticsRoutes } from './modules/analytics/analytics.routes.js';
+import { apiKeyRoutes } from './modules/api-key/api-key.routes.js';
 
 const app = express();
 
@@ -64,6 +65,7 @@ app.use('/v1/timeline', timelineRoutes);
 app.use('/v1/comments', commentRoutes);
 app.use('/v1/notifications', notificationRoutes);
 app.use('/v1/analytics', analyticsRoutes);
+app.use('/v1/api-keys', apiKeyRoutes);
 
 // ─── Widget Routes ───
 // Note: widget endpoints are defined inside feedbackRoutes at /v1/feedback/widget/:projectId/feedback
