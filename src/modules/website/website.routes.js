@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Website } from '../../database/models/index.js';
+import { Website, Project, Workspace } from '../../database/models/index.js';
 import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
@@ -8,6 +8,7 @@ import { addWebsiteSchema, updateWebsiteSchema } from '../auth/auth.validation.j
 import { NotFoundError } from '../../common/errors/AppError.js';
 import { requireProjectAccess, requireWebsiteAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { authorize } from '../../common/middleware/authorize.js';
+import { PLAN_LIMITS } from '../../common/plan.js';
 
 const router = Router();
 router.use(authenticate);
@@ -23,6 +24,23 @@ router.get('/project/:projectId', requireProjectAccess, asyncHandler(async (req,
 
 // Add website to project
 router.post('/project/:projectId', requireProjectAccess, authorize('owner', 'admin', 'developer'), validate(addWebsiteSchema), asyncHandler(async (req, res) => {
+  const project = await Project.findByPk(req.params.projectId, { include: [{ model: Workspace }] });
+  if (!project) throw new NotFoundError('Project not found');
+  const workspace = project.Workspace;
+  if (workspace) {
+    const planLimits = PLAN_LIMITS[workspace.plan] || PLAN_LIMITS.free;
+    if (planLimits.websitesPerWorkspace !== Infinity) {
+      const count = await Website.count({
+        include: [{ model: Project, where: { workspaceId: workspace.id } }],
+      });
+      if (count >= planLimits.websitesPerWorkspace) {
+        return res.status(429).json({
+          success: false,
+          error: { code: 'USAGE_LIMIT_EXCEEDED', message: 'Website limit reached. Upgrade to Pro for unlimited websites.' },
+        });
+      }
+    }
+  }
   const website = await Website.create({
     url: req.body.url,
     projectId: req.params.projectId,

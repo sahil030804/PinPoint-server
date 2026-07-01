@@ -27,6 +27,22 @@ export function initWorkspaceModel(sequelize) {
       type: DataTypes.TEXT,
       field: 'logo_url',
     },
+    plan: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'free',
+      allowNull: false,
+    },
+    feedbackMonthlyCount: {
+      type: DataTypes.INTEGER,
+      field: 'feedback_monthly_count',
+      defaultValue: 0,
+      allowNull: false,
+    },
+    feedbackLimitResetAt: {
+      type: DataTypes.DATE,
+      field: 'feedback_limit_reset_at',
+      allowNull: true,
+    },
     theme: {
       type: DataTypes.JSONB,
       defaultValue: {},

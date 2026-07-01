@@ -15,6 +15,7 @@ import { cacheService } from '../../common/services/cache.service.js';
 import { notificationService } from '../../common/services/notification.service.js';
 import { screenshotService } from '../../common/services/screenshot.service.js';
 import { emailService } from '../../common/services/email.service.js';
+import { PLAN_LIMITS } from '../../common/plan.js';
 
 const router = Router();
 
@@ -35,12 +36,35 @@ function buildCacheKey(prefix, params) {
 // ─── Widget endpoint (no auth required) ───
 router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), asyncHandler(async (req, res) => {
   const project = await Project.findByPk(req.params.projectId, {
-    include: [{ model: Website }],
+    include: [{ model: Website }, { model: Workspace }],
   });
   if (!project) throw new NotFoundError('Project not found');
 
   const website = project.Websites?.[0];
   if (!website) throw new NotFoundError('No website found for this project');
+
+  const workspace = project.Workspace;
+  if (workspace) {
+    const planLimits = PLAN_LIMITS[workspace.plan] || PLAN_LIMITS.free;
+    if (planLimits.feedbackPerMonth !== Infinity) {
+      const now = new Date();
+      const resetAt = workspace.feedbackLimitResetAt;
+      if (!resetAt || resetAt <= now) {
+        await workspace.update({
+          feedbackMonthlyCount: 0,
+          feedbackLimitResetAt: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+        });
+        workspace.feedbackMonthlyCount = 0;
+        workspace.feedbackLimitResetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      }
+      if (workspace.feedbackMonthlyCount >= planLimits.feedbackPerMonth) {
+        return res.status(429).json({
+          success: false,
+          error: { code: 'USAGE_LIMIT_EXCEEDED', message: 'Monthly feedback limit reached. Upgrade to Pro for unlimited feedback.' },
+        });
+      }
+    }
+  }
 
   let screenshot = req.body.screenshot;
   if (typeof screenshot === 'string') {
@@ -137,20 +161,31 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
   await cacheService.invalidate(`feedback:workspace:${project.workspaceId}`);
   await cacheService.invalidate(`feedback:website:${website.id}`);
 
+  workspace?.increment({ feedbackMonthlyCount: 1 }).catch(() => {});
+
   res.status(201).json(success(feedback));
 }));
 
 // Widget config (public)
 router.get('/widget/:projectId/config', asyncHandler(async (req, res) => {
   const project = await Project.findByPk(req.params.projectId, {
-    include: [{ model: Website }],
+    include: [
+      { model: Website },
+      { model: Workspace, attributes: ['id', 'plan', 'theme'] },
+    ],
   });
   if (!project) throw new NotFoundError('Project not found');
 
   const website = project.Websites?.[0];
   if (!website) throw new NotFoundError('No website found');
 
-  res.json(success(website.widgetConfig));
+  const workspace = project.Workspace;
+  const planLimits = PLAN_LIMITS[workspace?.plan] || PLAN_LIMITS.free;
+
+  res.json(success({
+    ...website.widgetConfig,
+    whiteLabel: planLimits.whiteLabel,
+  }));
 }));
 
 // ─── Authenticated endpoints ───
