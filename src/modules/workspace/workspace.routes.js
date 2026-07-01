@@ -150,8 +150,8 @@ router.post('/:id/members', requireWorkspaceAccess, authorize('owner', 'admin'),
   const appUrl = env.auth.appUrl || 'http://localhost:3000';
   const inviteUrl = `${appUrl}/auth/register?invitation=${invitation.id}`;
 
-  // Send invitation email (fire-and-forget)
-  emailService.sendInvitationEmail({
+  // Send invitation email
+  await emailService.sendInvitationEmail({
     toEmail: req.body.email,
     workspaceName,
     invitedByName: req.user.name || 'Someone',

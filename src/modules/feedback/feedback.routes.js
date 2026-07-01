@@ -391,7 +391,7 @@ router.put('/:id', requireFeedbackAccess, validate(updateFeedbackSchema), asyncH
 
     const assigneeUser = await User.findByPk(req.body.assigneeId, { attributes: ['email', 'name'] });
     if (assigneeUser?.email) {
-      emailService.sendAssignmentEmail({
+      await emailService.sendAssignmentEmail({
         toEmail: assigneeUser.email,
         toName: assigneeUser.name,
         feedbackTitle: feedback.title || feedback.comment,
@@ -412,7 +412,7 @@ router.put('/:id', requireFeedbackAccess, validate(updateFeedbackSchema), asyncH
     if (feedback.assigneeId) {
       const assigneeUser = await User.findByPk(feedback.assigneeId, { attributes: ['email', 'name'] });
       if (assigneeUser?.email) {
-        emailService.sendStatusChangeEmail({
+        await emailService.sendStatusChangeEmail({
           toEmail: assigneeUser.email,
           toName: assigneeUser.name,
           feedbackTitle: feedback.title || feedback.comment,
