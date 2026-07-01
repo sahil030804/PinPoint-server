@@ -15,6 +15,7 @@ import { cacheService } from '../../common/services/cache.service.js';
 import { notificationService } from '../../common/services/notification.service.js';
 import { screenshotService } from '../../common/services/screenshot.service.js';
 import { emailService } from '../../common/services/email.service.js';
+import { webhookService } from '../../common/services/webhook.service.js';
 
 const router = Router();
 
@@ -127,6 +128,17 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
     workspaceId: project.workspaceId,
     projectId: project.id,
     actorId: null,
+  });
+
+  webhookService.sendWebhook('feedback.created', {
+    workspaceId: project.workspaceId,
+    feedbackId: feedback.id,
+    title: feedback.title || feedback.comment?.slice(0, 80),
+    commentPreview: feedback.comment?.slice(0, 200),
+    pageUrl: feedback.pageUrl,
+    status: feedback.status,
+    priority: feedback.priority,
+    reporterName: feedback.reporterName,
   });
 
   const io = getSocketIo(req);
@@ -485,6 +497,17 @@ router.put('/:id', requireFeedbackAccess, validate(updateFeedbackSchema), asyncH
       feedback,
       actorId: req.user.id,
       projectId,
+    });
+
+    webhookService.sendWebhook('feedback.updated', {
+      workspaceId: wsId,
+      feedbackId: feedback.id,
+      title: feedback.title || feedback.comment?.slice(0, 80),
+      commentPreview: feedback.comment?.slice(0, 200),
+      pageUrl: feedback.pageUrl,
+      status: feedback.status,
+      priority: feedback.priority,
+      reporterName: feedback.reporterName,
     });
 
     if (feedback.assigneeId) {
