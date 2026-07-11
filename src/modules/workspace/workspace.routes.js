@@ -151,7 +151,14 @@ router.get('/:id/stats', requireWorkspaceAccess, asyncHandler(async (req, res) =
 router.put('/:id', requireWorkspaceAccess, authorize('owner', 'admin'), validate(updateWorkspaceSchema), asyncHandler(async (req, res) => {
   const workspace = await Workspace.findByPk(req.params.id);
   if (!workspace) throw new NotFoundError('Workspace not found');
-  await workspace.update(req.body);
+
+  const updates = { ...req.body };
+  if (updates.logoData !== undefined) {
+    updates.logoUrl = updates.logoData;
+  }
+  delete updates.logoData;
+
+  await workspace.update(updates);
   res.json(success(workspace));
 }));
 

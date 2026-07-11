@@ -79,7 +79,7 @@ export class AuthService {
     return { user: this.sanitizeUser(user, membership?.workspaceId, membership?.role), token };
   }
 
-  async updateProfile(userId, { name, avatarUrl }) {
+  async updateProfile(userId, { name, avatarUrl, avatarData }) {
     const user = await User.findByPk(userId);
     if (!user) {
       throw new AuthenticationError('User not found');
@@ -88,6 +88,7 @@ export class AuthService {
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (avatarUrl !== undefined) updates.avatarUrl = avatarUrl;
+    if (avatarData !== undefined) updates.avatarUrl = avatarData;
 
     await user.update(updates);
 

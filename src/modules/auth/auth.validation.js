@@ -106,6 +106,7 @@ export const inviteMemberSchema = z.object({
 export const updateProfileSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255).optional(),
   avatarUrl: z.string().url('Invalid URL').nullable().optional(),
+  avatarData: z.string().optional(),
 });
 
 export const updateMemberSchema = z.object({
@@ -115,6 +116,7 @@ export const updateMemberSchema = z.object({
 export const updateWorkspaceSchema = z.object({
   name: z.string().min(1, 'Workspace name is required').max(255).optional(),
   logoUrl: z.string().url('Invalid URL').nullable().optional(),
+  logoData: z.string().optional(),
   theme: z.object({}).passthrough().optional(),
 });
 
