@@ -25,13 +25,15 @@ function getSocketIo(req) {
 }
 
 function buildCacheKey(prefix, params) {
+  const { workspaceId, websiteId, ...rest } = params;
+  const id = workspaceId || websiteId;
   const filtered = {};
-  for (const [k, v] of Object.entries(params)) {
+  for (const [k, v] of Object.entries(rest)) {
     if (v !== undefined && v !== null && v !== '') {
       filtered[k] = v;
     }
   }
-  return `${prefix}:${JSON.stringify(filtered)}`;
+  return `${prefix}:${id}:${JSON.stringify(filtered)}`;
 }
 
 // ─── Widget endpoint (no auth required) ───

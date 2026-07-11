@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { corsOptions } from './config/cors.js';
 import { requestLogger } from './common/middleware/requestLogger.js';
@@ -43,6 +44,7 @@ app.use('/v1/feedback/widget', (req, res, next) => {
 });
 
 // ─── Global Middleware ───
+app.use(compression({ level: 6, threshold: 256 }));
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(cookieParser());
@@ -51,9 +53,20 @@ app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
 app.use(createRateLimiter());
 
-// ─── Health Check ───
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// ─── Health Check (enhanced with DB + Redis checks) ───
+app.get('/health', async (_req, res) => {
+  let dbOk = false;
+  let redisOk = false;
+  try {
+    await import('./config/database.js').then(m => m.sequelize.authenticate());
+    dbOk = true;
+  } catch {}
+  try {
+    const redis = await import('./config/redis.js').then(m => m.default || m.redis);
+    await redis.ping();
+    redisOk = true;
+  } catch {}
+  res.json({ status: dbOk && redisOk ? 'ok' : 'degraded', db: dbOk ? 'connected' : 'error', redis: redisOk ? 'connected' : 'error', timestamp: new Date().toISOString() });
 });
 
 // ─── API Routes ───

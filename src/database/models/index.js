@@ -10,6 +10,7 @@ import { initCommentModel } from './Comment.model.js';
 import { initNotificationModel } from './Notification.model.js';
 import { initApiKeyModel } from './ApiKey.model.js';
 import { initInvitationModel } from './Invitation.model.js';
+import { initWebhookDeliveryModel } from './WebhookDelivery.model.js';
 
 // Initialize all models
 const Workspace = initWorkspaceModel(sequelize);
@@ -23,6 +24,7 @@ const Comment = initCommentModel(sequelize);
 const Notification = initNotificationModel(sequelize);
 const ApiKey = initApiKeyModel(sequelize);
 const Invitation = initInvitationModel(sequelize);
+const WebhookDelivery = initWebhookDeliveryModel(sequelize);
 
 // ─── Associations ───
 
@@ -87,6 +89,10 @@ ActivityLog.belongsTo(User, { as: 'actor', foreignKey: 'actor_id' });
 // Comment → User
 Comment.belongsTo(User, { as: 'author', foreignKey: 'user_id' });
 
+// Workspace → WebhookDeliveries
+Workspace.hasMany(WebhookDelivery, { foreignKey: 'workspace_id', onDelete: 'CASCADE' });
+WebhookDelivery.belongsTo(Workspace, { foreignKey: 'workspace_id' });
+
 export {
   sequelize,
   Workspace,
@@ -100,4 +106,5 @@ export {
   Notification,
   ApiKey,
   Invitation,
+  WebhookDelivery,
 };

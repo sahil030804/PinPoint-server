@@ -212,7 +212,6 @@ router.post('/:id/members', requireWorkspaceAccess, authorize('owner', 'admin'),
     status: 'pending',
   });
 
-  const workspace = await Workspace.findByPk(req.params.id, { attributes: ['name'] });
   const workspaceName = workspace?.name || 'a workspace';
   const appUrl = env.auth.appUrl || 'http://localhost:3000';
   const inviteUrl = `${appUrl}/auth/register?invitation=${invitation.id}`;

@@ -41,7 +41,7 @@ export const createFeedbackSchema = z.object({
     x: z.number(),
     y: z.number(),
     element: z.string().optional(),
-  }),
+  }).default({ x: 0, y: 0, element: '' }),
   screenshot: z.union([
     z.string(),
     z.object({ clientUrl: z.string().optional(), serverUrl: z.string().optional() }),
@@ -66,11 +66,16 @@ export const createFeedbackSchema = z.object({
     deviceType: z.string().optional(),
     referrer: z.string().optional(),
     userAgent: z.string().optional(),
+    url: z.string().optional(),
     cookiesEnabled: z.boolean().optional(),
     darkMode: z.boolean().optional(),
   }),
   reporterEmail: z.string().email().optional(),
   reporterName: z.string().max(255).optional(),
+  consoleErrors: z.array(z.object({
+    message: z.string(),
+    time: z.string().optional(),
+  })).optional(),
 });
 
 export const updateFeedbackSchema = z.object({

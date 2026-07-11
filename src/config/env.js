@@ -93,4 +93,8 @@ export const env = {
   puppeteer: {
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
   },
+
+  webhook: {
+    secret: process.env.WEBHOOK_SECRET || process.env.AUTH_SECRET,
+  },
 };
