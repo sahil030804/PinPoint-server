@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ActivityLog, User } from '../../database/models/index.js';
+import { ActivityLog, User, Feedback } from '../../database/models/index.js';
 import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
@@ -20,8 +20,6 @@ router.get('/feedback/:feedbackId', requireFeedbackAccess, asyncHandler(async (r
   });
 
   if (!activities.length) {
-    // Check if feedback exists
-    const { Feedback } = await import('../../database/models/index.js');
     const feedback = await Feedback.findByPk(req.params.feedbackId);
     if (!feedback) throw new NotFoundError('Feedback not found');
   }

@@ -5,6 +5,8 @@ import { sequelize } from './database/models/index.js';
 import redis from './config/redis.js';
 import { logger } from './common/middleware/requestLogger.js';
 import { Server as SocketIOServer } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import { User } from './database/models/index.js';
 
 const server = http.createServer(app);
 
@@ -17,14 +19,34 @@ const io = new SocketIOServer(server, {
   },
 });
 
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+  if (!token) {
+    return next(new Error('Authentication required'));
+  }
+  try {
+    const decoded = jwt.verify(token, env.auth.secret);
+    const user = await User.findByPk(decoded.id, { attributes: ['id', 'tokenVersion'] });
+    if (!user || user.tokenVersion !== (decoded.tokenVersion ?? -1)) {
+      return next(new Error('Token has been invalidated'));
+    }
+    socket.userId = decoded.id;
+    next();
+  } catch {
+    next(new Error('Invalid token'));
+  }
+});
+
 io.on('connection', (socket) => {
-  logger.info(`[Socket.io] Client connected: ${socket.id}`);
+  logger.info(`[Socket.io] Client connected: ${socket.id} (user: ${socket.userId})`);
 
   socket.on('join:feedback', (feedbackId) => {
+    if (!feedbackId || typeof feedbackId !== 'string') return;
     socket.join(`feedback:${feedbackId}`);
   });
 
   socket.on('leave:feedback', (feedbackId) => {
+    if (!feedbackId || typeof feedbackId !== 'string') return;
     socket.leave(`feedback:${feedbackId}`);
   });
 

@@ -134,10 +134,6 @@ export class WebhookService {
     const bodyStr = JSON.stringify(requestBody);
     const signature = this.signPayload(bodyStr, webhook.url);
 
-    const start = Date.now();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
     let lastError = null;
     let response = null;
     const maxAttempts = 3;
@@ -148,7 +144,12 @@ export class WebhookService {
         await new Promise((r) => setTimeout(r, delays[attempt - 1]));
       }
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      let start;
       try {
+        start = Date.now();
         response = await fetch(webhook.url, {
           method: 'POST',
           headers: {
@@ -163,6 +164,7 @@ export class WebhookService {
           signal: controller.signal,
         });
 
+        clearTimeout(timeout);
         const durationMs = Date.now() - start;
         const responseText = await response.text().catch(() => '');
 
@@ -187,6 +189,7 @@ export class WebhookService {
 
         lastError = `HTTP ${response.status}: ${responseText.slice(0, 200)}`;
       } catch (err) {
+        clearTimeout(timeout);
         const durationMs = Date.now() - start;
         lastError = err.name === 'AbortError' ? 'Timeout: 15s' : err.message;
 
@@ -208,7 +211,6 @@ export class WebhookService {
       }
     }
 
-    clearTimeout(timeout);
     logger.error({ webhookUrl: webhook.url, event, maxAttempts, lastError }, 'Webhook delivery failed after all retries');
     return { success: false, error: lastError };
   }

@@ -4,7 +4,7 @@ import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
-import { addWebsiteSchema, updateWebsiteSchema } from '../auth/auth.validation.js';
+import { addWebsiteSchema, updateWebsiteSchema } from './website.validation.js';
 import { NotFoundError } from '../../common/errors/AppError.js';
 import { requireProjectAccess, requireWebsiteAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { authorize } from '../../common/middleware/authorize.js';
@@ -27,6 +27,8 @@ router.post('/project/:projectId', requireProjectAccess, authorize('owner', 'adm
   const project = await Project.findByPk(req.params.projectId, { include: [{ model: Workspace }] });
   if (!project) throw new NotFoundError('Project not found');
   const workspace = project.Workspace;
+
+  let exceeded = false;
   if (workspace) {
     const planLimits = PLAN_LIMITS[workspace.plan] || PLAN_LIMITS.free;
     if (planLimits.websitesPerWorkspace !== Infinity) {
@@ -34,17 +36,21 @@ router.post('/project/:projectId', requireProjectAccess, authorize('owner', 'adm
         include: [{ model: Project, where: { workspaceId: workspace.id } }],
       });
       if (count >= planLimits.websitesPerWorkspace) {
-        return res.status(429).json({
-          success: false,
-          error: { code: 'USAGE_LIMIT_EXCEEDED', message: 'Website limit reached. Upgrade to Pro for unlimited websites.' },
-        });
+        exceeded = true;
       }
     }
   }
+  if (exceeded) {
+    return res.status(429).json({
+      success: false,
+      error: { code: 'USAGE_LIMIT_EXCEEDED', message: 'Website limit reached. Upgrade to Pro for unlimited websites.' },
+    });
+  }
+
   const website = await Website.create({
     url: req.body.url,
     projectId: req.params.projectId,
-    widgetConfig: req.body.widgetConfig || undefined,
+    widgetConfig: req.body.widgetConfig ?? undefined,
   });
   res.status(201).json(success(website));
 }));
@@ -60,7 +66,13 @@ router.get('/:id', requireWebsiteAccess, asyncHandler(async (req, res) => {
 router.put('/:id', requireWebsiteAccess, authorize('owner', 'admin', 'developer'), validate(updateWebsiteSchema), asyncHandler(async (req, res) => {
   const website = await Website.findByPk(req.params.id);
   if (!website) throw new NotFoundError('Website not found');
-  await website.update(req.body);
+
+  const updates = { ...req.body };
+  if (updates.widgetConfig && typeof updates.widgetConfig === 'object') {
+    updates.widgetConfig = { ...website.widgetConfig, ...updates.widgetConfig };
+  }
+
+  await website.update(updates);
   res.json(success(website));
 }));
 

@@ -11,6 +11,17 @@ const ROLE_HIERARCHY = {
 export function authorize(...allowedRoles) {
   return (req, _res, next) => {
     if (req.authType === 'api_key') {
+      if (!req.membership) {
+        throw new AuthorizationError('API key workspace membership required');
+      }
+      const userLevel = ROLE_HIERARCHY[req.membership.role] || 0;
+      const requiredLevel = Math.min(...allowedRoles.map((r) => ROLE_HIERARCHY[r] || 0));
+      if (userLevel < requiredLevel) {
+        const roleNames = allowedRoles
+          .map((r) => `${r} (level ${ROLE_HIERARCHY[r]})`)
+          .join(', ');
+        throw new AuthorizationError(`API key role requires one of: ${roleNames}`);
+      }
       return next();
     }
 

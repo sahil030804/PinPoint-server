@@ -30,16 +30,16 @@ async function verifyApiKey(token) {
     throw new AuthenticationError('API key has expired');
   }
 
-  const membership = await WorkspaceMember.findOne({
-    where: { workspaceId: apiKeyRecord.workspaceId },
-  });
-
-  apiKeyRecord.lastUsedAt = new Date();
-  await apiKeyRecord.save();
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  if (!apiKeyRecord.lastUsedAt || apiKeyRecord.lastUsedAt < fiveMinutesAgo) {
+    apiKeyRecord.lastUsedAt = new Date();
+    await apiKeyRecord.save();
+  }
 
   return {
-    id: membership?.userId || null,
+    id: null,
     workspaceId: apiKeyRecord.workspaceId,
+    apiKeyRole: apiKeyRecord.role || 'developer',
   };
 }
 
@@ -55,6 +55,7 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
         if (user) {
           req.user = user;
           req.authType = 'api_key';
+          req.membership = { role: user.apiKeyRole, workspaceId: user.workspaceId };
           return next();
         }
       } catch (err) {
@@ -91,6 +92,14 @@ export const authenticateRefresh = asyncHandler(async (req, _res, next) => {
     }
 
     try {
+      const decoded = jwt.decode(token);
+      if (!decoded || !decoded.exp) {
+        throw new AuthenticationError('Invalid token');
+      }
+      const maxRefreshWindow = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() > decoded.exp * 1000 + maxRefreshWindow) {
+        throw new AuthenticationError('Refresh window expired. Please log in again.');
+      }
       req.user = await verifyJwt(token, true);
       req.authType = 'jwt';
       return next();

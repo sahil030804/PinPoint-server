@@ -27,17 +27,19 @@ router.use(asyncHandler(async (req, res, next) => {
 router.get('/', authorize('owner', 'admin'), asyncHandler(async (req, res) => {
   const keys = await ApiKey.findAll({
     where: { workspaceId: req.membership.workspaceId },
-    attributes: ['id', 'name', 'keyPrefix', 'lastUsedAt', 'expiresAt', 'createdAt'],
+    attributes: ['id', 'name', 'keyPrefix', 'role', 'lastUsedAt', 'expiresAt', 'createdAt'],
     order: [['createdAt', 'DESC']],
   });
   res.json(success(keys));
 }));
 
 router.post('/', authorize('owner', 'admin'), asyncHandler(async (req, res) => {
-  const { name } = req.body;
+  const { name, role } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     throw new BadRequestError('Name is required');
   }
+  const allowedRoles = ['owner', 'admin', 'developer', 'viewer', 'client'];
+  const keyRole = role && allowedRoles.includes(role) ? role : 'developer';
 
   const raw = 'pp_' + crypto.randomBytes(32).toString('hex');
   const keyHash = await bcrypt.hash(raw, 12);
@@ -48,6 +50,7 @@ router.post('/', authorize('owner', 'admin'), asyncHandler(async (req, res) => {
     name: name.trim(),
     keyHash,
     keyPrefix,
+    role: keyRole,
   });
 
   res.status(201).json(success({
@@ -55,6 +58,7 @@ router.post('/', authorize('owner', 'admin'), asyncHandler(async (req, res) => {
     name: apiKey.name,
     key: raw,
     keyPrefix: apiKey.keyPrefix,
+    role: apiKey.role,
     createdAt: apiKey.createdAt,
   }));
 }));

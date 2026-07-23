@@ -12,9 +12,11 @@ const dbConfig = {
     acquire: 30000,
     idle: 10000,
   },
-  dialectOptions: env.isProd
-    ? { ssl: { require: true, rejectUnauthorized: false } }
-    : {},
+  dialectOptions: env.isProd && env.db.sslCaCert
+    ? { ssl: { require: true, rejectUnauthorized: true, ca: env.db.sslCaCert } }
+    : env.isProd
+      ? { ssl: { require: true, rejectUnauthorized: true } }
+      : {},
 };
 
 let sequelize;
@@ -22,9 +24,6 @@ let sequelize;
 if (env.db.url) {
   sequelize = new Sequelize(env.db.url, {
     ...dbConfig,
-    dialectOptions: env.isProd
-      ? { ssl: { require: true, rejectUnauthorized: false } }
-      : {},
   });
 } else {
   sequelize = new Sequelize(

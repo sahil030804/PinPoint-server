@@ -24,24 +24,51 @@ function getSocketIo(req) {
   return req.app.get('io');
 }
 
+const ALLOWED_CACHE_PARAMS = new Set(['status', 'priority', 'assigneeId', 'pageUrl', 'search', 'q', 'sortBy', 'sortOrder', 'limit', 'offset', 'tag', 'projectId']);
+
 function buildCacheKey(prefix, params) {
   const { workspaceId, websiteId, ...rest } = params;
   const id = workspaceId || websiteId;
   const filtered = {};
   for (const [k, v] of Object.entries(rest)) {
-    if (v !== undefined && v !== null && v !== '') {
+    if (ALLOWED_CACHE_PARAMS.has(k) && v !== undefined && v !== null && v !== '') {
       filtered[k] = v;
     }
   }
   return `${prefix}:${id}:${JSON.stringify(filtered)}`;
 }
 
+function originMatchesWebsite(origin, websites) {
+  if (!origin) return false;
+  try {
+    const parsed = new URL(origin);
+    return websites.some((w) => {
+      try {
+        return new URL(w.url).origin === parsed.origin;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return false;
+  }
+}
+
 // ─── Widget endpoint (no auth required) ───
 router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), asyncHandler(async (req, res) => {
   const project = await Project.findByPk(req.params.projectId, {
     include: [{ model: Website }, { model: Workspace }],
+    order: [[{ model: Website }, 'createdAt', 'DESC']],
   });
   if (!project) throw new NotFoundError('Project not found');
+
+  const reqOrigin = req.headers['origin'] || req.headers['referer'];
+  if (reqOrigin && !originMatchesWebsite(reqOrigin, project.Websites || [])) {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Request origin does not match any registered website.' },
+    });
+  }
 
   const website = project.Websites?.[0];
   if (!website) throw new NotFoundError('No website found for this project');
@@ -53,12 +80,16 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
       const now = new Date();
       const resetAt = workspace.feedbackLimitResetAt;
       if (!resetAt || resetAt <= now) {
-        await workspace.update({
+        const [updated] = await Workspace.update({
           feedbackMonthlyCount: 0,
           feedbackLimitResetAt: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+        }, {
+          where: { id: workspace.id, feedbackLimitResetAt: resetAt },
         });
-        workspace.feedbackMonthlyCount = 0;
-        workspace.feedbackLimitResetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        if (updated > 0) {
+          workspace.feedbackMonthlyCount = 0;
+          workspace.feedbackLimitResetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        }
       }
       if (workspace.feedbackMonthlyCount >= planLimits.feedbackPerMonth) {
         return res.status(429).json({
@@ -100,12 +131,13 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
   // ─── Screenshot upload (fire-and-forget) ───
   const screenshotClientUrl = req.body.screenshot;
   if (screenshotClientUrl && typeof screenshotClientUrl === 'string') {
-    const serverUrl = await screenshotService.uploadScreenshot(
+    screenshotService.uploadScreenshot(
       screenshotClientUrl, project.workspaceId, feedback.id
-    );
-    if (serverUrl) {
-      await feedback.update({ screenshot: { clientUrl: screenshotClientUrl, serverUrl } });
-    }
+    ).then((serverUrl) => {
+      if (serverUrl) {
+        feedback.update({ screenshot: { clientUrl: screenshotClientUrl, serverUrl } }).catch(() => {});
+      }
+    }).catch(() => {});
   }
 
   // ─── Duplicate detection ───
@@ -187,6 +219,7 @@ router.get('/widget/:projectId/config', asyncHandler(async (req, res) => {
       { model: Website },
       { model: Workspace, attributes: ['id', 'plan', 'theme'] },
     ],
+    order: [[{ model: Website }, 'createdAt', 'DESC']],
   });
   if (!project) throw new NotFoundError('Project not found');
 
@@ -296,25 +329,7 @@ router.get('/workspace/:workspaceId/export', requireWorkspaceAccess, asyncHandle
   }
 
   const projectWhere = { workspaceId: req.params.workspaceId };
-
-  const rows = await Feedback.findAll({
-    where,
-    include: [
-      {
-        model: Website,
-        required: true,
-        attributes: ['id', 'url'],
-        include: [{
-          model: Project,
-          attributes: ['id', 'name', 'color', 'workspaceId'],
-          where: projectWhere,
-        }],
-      },
-      { model: User, as: 'assignee', attributes: ['id', 'name', 'email'] },
-      { model: User, as: 'reporter', attributes: ['id', 'name', 'email'] },
-    ],
-    order: [['createdAt', 'DESC']],
-  });
+  const MAX_EXPORT = 10000;
 
   const esc = (v) => {
     if (v == null) return '';
@@ -326,22 +341,57 @@ router.get('/workspace/:workspaceId/export', requireWorkspaceAccess, asyncHandle
   };
 
   const header = 'id,title,comment,status,priority,page_url,reporter_name,reporter_email,assignee_name,tags,created_at,resolved_at,browser,os,device_type,viewport';
-  const csvRows = rows.map((fb) => {
-    const m = fb.metadata || {};
-    const tagStr = Array.isArray(fb.tags) ? fb.tags.join('; ') : (fb.tags || '');
-    return [
-      esc(fb.id), esc(fb.title), esc(fb.comment), esc(fb.status), esc(fb.priority),
-      esc(fb.pageUrl), esc(fb.reporterName || fb.reporter?.name || ''), esc(fb.reporterEmail || fb.reporter?.email || ''),
-      esc(fb.assignee?.name || ''), esc(tagStr),
-      esc(fb.createdAt?.toISOString() || ''), esc(fb.resolvedAt?.toISOString() || ''),
-      esc(m.browser || ''), esc(m.os || ''), esc(m.deviceType || ''), esc(m.viewport || ''),
-    ].join(',');
-  });
 
-  const csv = [header, ...csvRows].join('\n');
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="feedback-export-${Date.now()}.csv"`);
-  res.send(csv);
+  res.write(header + '\n');
+
+  const BATCH_SIZE = 500;
+  let offset = 0;
+  let totalWritten = 0;
+
+  while (totalWritten < MAX_EXPORT) {
+    const batch = await Feedback.findAll({
+      where,
+      include: [
+        {
+          model: Website,
+          required: true,
+          attributes: ['id', 'url'],
+          include: [{
+            model: Project,
+            attributes: ['id', 'name', 'color', 'workspaceId'],
+            where: projectWhere,
+          }],
+        },
+        { model: User, as: 'assignee', attributes: ['id', 'name', 'email'] },
+        { model: User, as: 'reporter', attributes: ['id', 'name', 'email'] },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: BATCH_SIZE,
+      offset,
+    });
+
+    if (batch.length === 0) break;
+
+    for (const fb of batch) {
+      const m = fb.metadata || {};
+      const tagStr = Array.isArray(fb.tags) ? fb.tags.join('; ') : (fb.tags || '');
+      const row = [
+        esc(fb.id), esc(fb.title), esc(fb.comment), esc(fb.status), esc(fb.priority),
+        esc(fb.pageUrl), esc(fb.reporterName || fb.reporter?.name || ''), esc(fb.reporterEmail || fb.reporter?.email || ''),
+        esc(fb.assignee?.name || ''), esc(tagStr),
+        esc(fb.createdAt?.toISOString() || ''), esc(fb.resolvedAt?.toISOString() || ''),
+        esc(m.browser || ''), esc(m.os || ''), esc(m.deviceType || ''), esc(m.viewport || ''),
+      ].join(',');
+      res.write(row + '\n');
+      totalWritten++;
+    }
+
+    offset += BATCH_SIZE;
+  }
+
+  res.end();
 }));
 
 // ─── Website feedback listing ───

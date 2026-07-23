@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import { Op } from 'sequelize';
 import { Workspace, WorkspaceMember, WebhookDelivery } from '../../database/models/index.js';
 import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
@@ -24,6 +23,26 @@ router.use(asyncHandler(async (req, res, next) => {
   req.membership = membership;
   next();
 }));
+
+function isValidWebhookUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === '::1') return false;
+    if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return false;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname)) return false;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) return false;
+    if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(hostname)) return false;
+    if (/^fe80:/i.test(hostname)) return false;
+    if (/^f[c,d]00:/i.test(hostname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function getWebhooks(workspace) {
   const raw = workspace.theme?.webhooks;
@@ -68,11 +87,8 @@ router.get('/', authorize('owner', 'admin'), asyncHandler(async (req, res) => {
 // Create webhook
 router.post('/', authorize('owner', 'admin'), asyncHandler(async (req, res) => {
   const { url, events, isActive } = req.body;
-  if (!url || typeof url !== 'string') {
-    throw new BadRequestError('Webhook URL is required');
-  }
-  if (!url.startsWith('https://')) {
-    throw new BadRequestError('Webhook URL must use HTTPS');
+  if (!isValidWebhookUrl(url)) {
+    throw new BadRequestError('Invalid webhook URL. Must be a public HTTPS URL.');
   }
 
   const workspace = await getWorkspace(req.membership.workspaceId);
@@ -100,7 +116,12 @@ router.patch('/:id', authorize('owner', 'admin'), asyncHandler(async (req, res) 
   if (index === -1) throw new NotFoundError('Webhook not found');
 
   const existing = webhooks[index];
-  if (req.body.url !== undefined) existing.url = req.body.url;
+  if (req.body.url !== undefined) {
+    if (!isValidWebhookUrl(req.body.url)) {
+      throw new BadRequestError('Invalid webhook URL. Must be a public HTTPS URL.');
+    }
+    existing.url = req.body.url;
+  }
   if (req.body.events !== undefined) existing.events = req.body.events;
   if (req.body.isActive !== undefined) existing.isActive = req.body.isActive;
   existing.updatedAt = new Date().toISOString();
@@ -124,11 +145,8 @@ router.delete('/:id', authorize('owner', 'admin'), asyncHandler(async (req, res)
 // Test webhook — sends a ping to the URL
 router.post('/test', authorize('owner', 'admin'), asyncHandler(async (req, res) => {
   const { url } = req.body;
-  if (!url || typeof url !== 'string') {
-    throw new BadRequestError('Webhook URL is required');
-  }
-  if (!url.startsWith('https://')) {
-    throw new BadRequestError('Webhook URL must use HTTPS');
+  if (!isValidWebhookUrl(url)) {
+    throw new BadRequestError('Invalid webhook URL. Must be a public HTTPS URL.');
   }
 
   const result = await webhookService.deliverTest(url, req.membership.workspaceId);

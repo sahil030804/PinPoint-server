@@ -27,6 +27,11 @@ export function initApiKeyModel(sequelize) {
       field: 'key_prefix',
       allowNull: true,
     },
+    role: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'developer',
+      validate: { isIn: [['owner', 'admin', 'developer', 'viewer', 'client']] },
+    },
     lastUsedAt: {
       type: DataTypes.DATE,
       field: 'last_used_at',
@@ -39,7 +44,10 @@ export function initApiKeyModel(sequelize) {
     tableName: 'api_keys',
     timestamps: true,
     underscored: true,
-    indexes: [{ fields: ['workspace_id'] }],
+    indexes: [
+      { fields: ['workspace_id'] },
+      { fields: ['key_prefix'], unique: true },
+    ],
   });
 
   return ApiKey;

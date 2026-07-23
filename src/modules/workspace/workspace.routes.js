@@ -109,11 +109,16 @@ router.get('/:id/stats', requireWorkspaceAccess, asyncHandler(async (req, res) =
   const now = new Date();
   const resetAt = workspace.feedbackLimitResetAt;
   if (!resetAt || resetAt <= now) {
-    await workspace.update({
+    const [updated] = await Workspace.update({
       feedbackMonthlyCount: 0,
       feedbackLimitResetAt: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    }, {
+      where: { id: req.params.id, feedbackLimitResetAt: resetAt },
     });
-    workspace.feedbackMonthlyCount = 0;
+    if (updated > 0) {
+      workspace.feedbackMonthlyCount = 0;
+      workspace.feedbackLimitResetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    }
   }
 
   const planLimits = PLAN_LIMITS[workspace.plan] || PLAN_LIMITS.free;
@@ -139,7 +144,7 @@ router.get('/:id/stats', requireWorkspaceAccess, asyncHandler(async (req, res) =
     plan: workspace.plan,
     planLimits,
     usage: {
-      feedback: { current: workspace.feedbackMonthlyCount, limit: planLimits.feedbackPerMonth },
+      feedback: { current: feedbackCount, limit: planLimits.feedbackPerMonth },
       websites: { current: websiteCount, limit: planLimits.websitesPerWorkspace },
       members: { current: memberCount, limit: planLimits.membersPerWorkspace },
     },
@@ -231,25 +236,25 @@ router.post('/:id/members', requireWorkspaceAccess, authorize('owner', 'admin'),
     inviteUrl,
   });
 
-  // If user already exists, automatically add them
-  if (existingUser) {
-    const member = await WorkspaceMember.create({
-      workspaceId: req.params.id,
-      userId: existingUser.id,
-      role: req.body.role || 'viewer',
-    });
-    await invitation.update({ status: 'accepted', acceptedAt: new Date() });
-    return res.status(201).json(success({ member, invitation }));
-  }
-
-  res.status(201).json(success({ invitation, message: 'Invitation sent. User will be added when they register and accept.' }));
+  res.status(201).json(success({ invitation, message: 'Invitation sent.' }));
 }));
+
+async function checkNotLastOwner(workspaceId, userId) {
+  const member = await WorkspaceMember.findOne({
+    where: { workspaceId, userId },
+  });
+  if (member && member.role === 'owner') {
+    const ownerCount = await WorkspaceMember.count({ where: { workspaceId, role: 'owner' } });
+    if (ownerCount <= 1) {
+      throw new AuthorizationError('Cannot remove or demote the last owner of the workspace');
+    }
+  }
+  return member;
+}
 
 // Update member role
 router.put('/:id/members/:userId', requireWorkspaceAccess, authorize('owner', 'admin'), validate(updateMemberSchema), asyncHandler(async (req, res) => {
-  const member = await WorkspaceMember.findOne({
-    where: { workspaceId: req.params.id, userId: req.params.userId },
-  });
+  const member = await checkNotLastOwner(req.params.id, req.params.userId);
   if (!member) throw new NotFoundError('Member not found');
   await member.update({ role: req.body.role });
   res.json(success(member));
@@ -257,9 +262,7 @@ router.put('/:id/members/:userId', requireWorkspaceAccess, authorize('owner', 'a
 
 // Remove member
 router.delete('/:id/members/:userId', requireWorkspaceAccess, authorize('owner', 'admin'), asyncHandler(async (req, res) => {
-  const member = await WorkspaceMember.findOne({
-    where: { workspaceId: req.params.id, userId: req.params.userId },
-  });
+  const member = await checkNotLastOwner(req.params.id, req.params.userId);
   if (!member) throw new NotFoundError('Member not found');
   await member.destroy();
   res.json(success({ removed: true }));

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Op } from 'sequelize';
 import { env } from '../../config/env.js';
-import { User, Workspace, WorkspaceMember, Invitation } from '../../database/models/index.js';
+import { sequelize, User, Workspace, WorkspaceMember, Invitation } from '../../database/models/index.js';
 import { ConflictError, AuthenticationError, BadRequestError } from '../../common/errors/AppError.js';
 import { slugify } from '../../common/utils/slugify.js';
 
@@ -16,32 +16,34 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await User.create({
-      email,
-      name,
-      passwordHash,
-    });
+    return sequelize.transaction(async (tx) => {
+      const user = await User.create({
+        email,
+        name,
+        passwordHash,
+      }, { transaction: tx });
 
-    let workspaceId = null;
-    let role = null;
+      let workspaceId = null;
+      let role = null;
 
-    if (invitationId) {
-      const invitation = await Invitation.findByPk(invitationId);
-      if (invitation && invitation.email === email && invitation.status === 'pending') {
-        await WorkspaceMember.create({
-          workspaceId: invitation.workspaceId,
-          userId: user.id,
-          role: invitation.role,
-        });
-        await invitation.update({ status: 'accepted', acceptedAt: new Date() });
-        workspaceId = invitation.workspaceId;
-        role = invitation.role;
+      if (invitationId) {
+        const invitation = await Invitation.findByPk(invitationId, { transaction: tx });
+        if (invitation && invitation.email === email && invitation.status === 'pending') {
+          await WorkspaceMember.create({
+            workspaceId: invitation.workspaceId,
+            userId: user.id,
+            role: invitation.role,
+          }, { transaction: tx });
+          await invitation.update({ status: 'accepted', acceptedAt: new Date() }, { transaction: tx });
+          workspaceId = invitation.workspaceId;
+          role = invitation.role;
+        }
       }
-    }
 
-    const token = this.generateToken(user, workspaceId);
+      const token = this.generateToken(user, workspaceId);
 
-    return { user: this.sanitizeUser(user, workspaceId, role), token };
+      return { user: this.sanitizeUser(user, workspaceId, role), token };
+    });
   }
 
   async login({ email, password }) {
@@ -99,13 +101,13 @@ export class AuthService {
     return this.sanitizeUser(user, membership?.workspaceId, membership?.role);
   }
 
-  async invalidateSessions(userId) {
+  async invalidateSessions(userId, exceptTokenVersion) {
     const user = await User.findByPk(userId);
     if (!user) {
       throw new AuthenticationError('User not found');
     }
 
-    await user.increment('tokenVersion', { by: 1 });
+    await user.update({ tokenVersion: (user.tokenVersion || 0) + 1 });
   }
 
   async forgotPassword({ email }) {
@@ -115,32 +117,24 @@ export class AuthService {
     }
 
     const token = crypto.randomBytes(32).toString('hex');
-    const hash = await bcrypt.hash(token, 10);
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
     await user.update({
-      resetTokenHash: hash,
+      resetTokenHash: tokenHash,
       resetTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
     });
 
-    return { ok: true, resetToken: token, email: user.email };
+    return { ok: true, resetToken: token };
   }
 
   async resetPassword({ token, password }) {
-    const users = await User.findAll({
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const matchedUser = await User.findOne({
       where: {
-        resetTokenHash: { [Op.ne]: null },
+        resetTokenHash: tokenHash,
         resetTokenExpiresAt: { [Op.gte]: new Date() },
       },
     });
-
-    let matchedUser = null;
-    for (const u of users) {
-      const valid = await bcrypt.compare(token, u.resetTokenHash);
-      if (valid) {
-        matchedUser = u;
-        break;
-      }
-    }
 
     if (!matchedUser) {
       throw new BadRequestError('Invalid or expired reset token');

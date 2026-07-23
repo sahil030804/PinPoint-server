@@ -3,11 +3,18 @@ import { success } from '../../common/utils/response.js';
 import { authService } from './auth.service.js';
 import { emailService } from '../../common/services/email.service.js';
 import { createRateLimiter } from '../../common/middleware/rateLimiter.js';
+import { User, WorkspaceMember } from '../../database/models/index.js';
 
 const forgotPasswordLimiter = createRateLimiter({
   windowMs: 3600000,
   max: 3,
   message: 'Too many password reset requests, please try again later',
+});
+
+const resetPasswordLimiter = createRateLimiter({
+  windowMs: 900000,
+  max: 5,
+  message: 'Too many reset attempts, please try again later',
 });
 
 export const authController = {
@@ -22,7 +29,6 @@ export const authController = {
   }),
 
   me: asyncHandler(async (req, res) => {
-    const { User, WorkspaceMember } = await import('../../database/models/index.js');
     const user = await User.findByPk(req.user.id);
     const membership = await WorkspaceMember.findOne({ where: { userId: user.id } });
     const workspaceId = req.query.workspaceId || membership?.workspaceId || null;
@@ -57,7 +63,7 @@ export const authController = {
       const result = await authService.forgotPassword(req.body);
       if (result.resetToken) {
         await emailService.sendPasswordResetEmail({
-          toEmail: result.email,
+          toEmail: req.body.email,
           resetToken: result.resetToken,
         });
       }
@@ -65,11 +71,14 @@ export const authController = {
     }),
   ],
 
-  resetPassword: asyncHandler(async (req, res) => {
-    const result = await authService.resetPassword({
-      token: req.params.token,
-      password: req.body.password,
-    });
-    res.json(success(result));
-  }),
+  resetPassword: [
+    resetPasswordLimiter,
+    asyncHandler(async (req, res) => {
+      const result = await authService.resetPassword({
+        token: req.params.token,
+        password: req.body.password,
+      });
+      res.json(success(result));
+    }),
+  ],
 };

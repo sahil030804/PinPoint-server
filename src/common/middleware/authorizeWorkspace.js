@@ -2,16 +2,23 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { WorkspaceMember, Feedback, Website, Project } from '../../database/models/index.js';
 import { BadRequestError, NotFoundError, AuthorizationError } from '../errors/AppError.js';
 
-async function checkMembership(userId, workspaceId) {
+async function checkMembership(userId, workspaceId, req) {
   if (!workspaceId) return null;
-  return WorkspaceMember.findOne({ where: { userId, workspaceId } });
+  const cacheKey = `membership:${userId}:${workspaceId}`;
+  if (req._membershipCache?.has(cacheKey)) {
+    return req._membershipCache.get(cacheKey);
+  }
+  const membership = await WorkspaceMember.findOne({ where: { userId, workspaceId } });
+  if (!req._membershipCache) req._membershipCache = new Map();
+  req._membershipCache.set(cacheKey, membership);
+  return membership;
 }
 
 export const requireWorkspaceAccess = asyncHandler(async (req, _res, next) => {
   const workspaceId = req.params.workspaceId || req.params.id;
   if (!workspaceId) throw new BadRequestError('Workspace ID required');
 
-  const membership = await checkMembership(req.user.id, workspaceId);
+  const membership = await checkMembership(req.user.id, workspaceId, req);
   if (!membership) throw new AuthorizationError('Not a member of this workspace');
 
   req.membership = membership;
@@ -25,7 +32,7 @@ export const requireProjectAccess = asyncHandler(async (req, _res, next) => {
   const project = await Project.findByPk(projectId, { attributes: ['workspaceId'] });
   if (!project) throw new NotFoundError('Project not found');
 
-  const membership = await checkMembership(req.user.id, project.workspaceId);
+  const membership = await checkMembership(req.user.id, project.workspaceId, req);
   if (!membership) throw new AuthorizationError('Not a member of this workspace');
 
   req.membership = membership;
@@ -45,7 +52,7 @@ export const requireWebsiteAccess = asyncHandler(async (req, _res, next) => {
   const workspaceId = website.Project?.workspaceId;
   if (!workspaceId) throw new AuthorizationError('Website has no associated workspace');
 
-  const membership = await checkMembership(req.user.id, workspaceId);
+  const membership = await checkMembership(req.user.id, workspaceId, req);
   if (!membership) throw new AuthorizationError('Not a member of this workspace');
 
   req.membership = membership;
@@ -69,7 +76,7 @@ export const requireFeedbackAccess = asyncHandler(async (req, _res, next) => {
   const workspaceId = feedback.Website?.Project?.workspaceId;
   if (!workspaceId) throw new AuthorizationError('Feedback has no associated workspace');
 
-  const membership = await checkMembership(req.user.id, workspaceId);
+  const membership = await checkMembership(req.user.id, workspaceId, req);
   if (!membership) throw new AuthorizationError('Not a member of this workspace');
 
   req.membership = membership;

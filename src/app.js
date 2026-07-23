@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import cookieParser from 'cookie-parser';
 import { corsOptions } from './config/cors.js';
 import { requestLogger } from './common/middleware/requestLogger.js';
 import { errorHandler } from './common/errors/errorHandler.js';
@@ -47,7 +46,6 @@ app.use('/v1/feedback/widget', (req, res, next) => {
 app.use(compression({ level: 6, threshold: 256 }));
 app.use(helmet());
 app.use(cors(corsOptions));
-app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);

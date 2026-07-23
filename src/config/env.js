@@ -38,6 +38,7 @@ export const env = {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     url: process.env.DATABASE_URL,
+    sslCaCert: process.env.DB_SSL_CA_CERT,
   },
 
   redis: {
@@ -50,7 +51,7 @@ export const env = {
   },
 
   apiKey: {
-    encryptionKey: process.env.API_KEY_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef',
+    encryptionKey: process.env.API_KEY_ENCRYPTION_KEY,
   },
 
   email: {
@@ -78,6 +79,11 @@ export const env = {
     publicUrl: process.env.R2_PUBLIC_URL,
   },
 
+  company: {
+    billingEmail: process.env.BILLING_EMAIL || 'billing@pinpoint.dev',
+    supportEmail: process.env.SUPPORT_EMAIL || 'support@pinpoint.dev',
+  },
+
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
@@ -95,6 +101,6 @@ export const env = {
   },
 
   webhook: {
-    secret: process.env.WEBHOOK_SECRET || process.env.AUTH_SECRET,
+    secret: process.env.WEBHOOK_SECRET,
   },
 };
