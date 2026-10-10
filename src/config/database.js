@@ -12,10 +12,13 @@ const dbConfig = {
     acquire: 30000,
     idle: 10000,
   },
+  // NOTE: managed poolers (Supabase Supavisor) present a chain Node
+  // can't verify against public CAs. Encryption stays on (require);
+  // chain verification only when an explicit CA is provided.
   dialectOptions: env.isProd && env.db.sslCaCert
     ? { ssl: { require: true, rejectUnauthorized: true, ca: env.db.sslCaCert, servername: env.db.host } }
     : env.isProd
-      ? { ssl: { require: true, rejectUnauthorized: true, servername: env.db.host } }
+      ? { ssl: { require: true, rejectUnauthorized: false, servername: env.db.host } }
       : {},
 };
 
