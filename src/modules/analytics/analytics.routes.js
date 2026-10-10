@@ -56,6 +56,7 @@ router.get('/activity/:workspaceId', requireWorkspaceAccess, asyncHandler(async 
       al.id, al.action, al.metadata, al.created_at,
       u.name AS actor_name, u.avatar_url AS actor_avatar,
       f.id AS feedback_id, f.title AS feedback_title, f.page_url,
+      p.id AS project_id,
       assignee.name AS assignee_name
     FROM activity_logs al
     JOIN feedback f ON al.feedback_id = f.id
