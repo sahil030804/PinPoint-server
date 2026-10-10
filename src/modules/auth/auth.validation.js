@@ -55,6 +55,8 @@ export const createFeedbackSchema = z.object({
     color: z.string(),
     label: z.string().optional(),
   })).optional(),
+  priority: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+  category: z.enum(['bug', 'feature', 'improvement', 'general']).optional(),
   metadata: z.object({
     browser: z.string().optional(),
     os: z.string().optional(),

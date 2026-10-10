@@ -64,9 +64,14 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
 
   const reqOrigin = req.headers['origin'] || req.headers['referer'];
   if (reqOrigin && !originMatchesWebsite(reqOrigin, project.Websites || [])) {
+    let originLabel = reqOrigin;
+    try { originLabel = new URL(reqOrigin).origin; } catch { /* keep raw */ }
     return res.status(403).json({
       success: false,
-      error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Request origin does not match any registered website.' },
+      error: {
+        code: 'ORIGIN_NOT_ALLOWED',
+        message: 'Request origin "' + originLabel + '" does not match any registered website for this project. Add it under Project → Install Widget → Add Website, then try again.',
+      },
     });
   }
 
@@ -114,9 +119,14 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
       coordinates: req.body.coordinates,
       screenshot,
       annotations: req.body.annotations || [],
-      metadata: req.body.metadata || {},
+      metadata: {
+        ...(req.body.metadata || {}),
+        ...(req.body.consoleErrors ? { consoleErrors: req.body.consoleErrors } : {}),
+      },
       reporterEmail: req.body.reporterEmail,
       reporterName: req.body.reporterName,
+      priority: req.body.priority || 'medium',
+      tags: req.body.category ? [req.body.category] : [],
     }, { transaction: tx });
 
     await ActivityLog.create({
@@ -159,7 +169,7 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
         const dist = Math.sqrt(
           (feedbackCoords.x - c.x) ** 2 + (feedbackCoords.y - c.y) ** 2
         );
-        if (dist <= 50) {
+        if (dist <= 0.05) {
           duplicateOf = potential.id;
           break;
         }

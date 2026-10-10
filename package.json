@@ -41,5 +41,8 @@
     "pino-pretty": "^11.2.0",
     "sequelize-cli": "^6.6.0",
     "vitest": "^2.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
   }
 }
