@@ -29,7 +29,7 @@ export function initWebsiteModel(sequelize) {
         position: 'bottom-right',
         color: '#3B82F6',
         buttonText: 'Feedback',
-        icon: 'chat',
+        icon: 'feedback',
         darkMode: true,
       },
     },
