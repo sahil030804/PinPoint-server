@@ -98,14 +98,14 @@ export class EmailService {
         ${actionUrl && actionText ? `
         <tr>
           <td style="padding:0 24px 24px;text-align:center">
-            <a href="${actionUrl}" style="display:inline-block;padding:12px 24px;background-color:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:500">${actionText}</a>
+            <a href="${actionUrl}" style="display:inline-block;padding:12px 24px;background-color:#3E5A75;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:500">${actionText}</a>
           </td>
         </tr>` : ''}
         <tr>
           <td style="padding:16px 24px 24px;border-top:1px solid #e5e7eb">
             <p style="margin:0;font-size:12px;color:#9ca3af">
               PinPoint · <a href="${APP_URL}" style="color:#9ca3af">${APP_URL}</a><br>
-              If you don't want to receive these emails, you can <a href="${APP_URL}/dashboard/settings" style="color:#2563eb">turn off notifications</a>.
+              If you don't want to receive these emails, you can <a href="${APP_URL}/dashboard/settings" style="color:#3E5A75">turn off notifications</a>.
             </p>
           </td>
         </tr>
@@ -148,7 +148,7 @@ export class EmailService {
       'New comment on your feedback',
       `<p style="margin:0 0 12px;font-size:14px;color:#374151">${commenterName || 'Someone'} commented on:</p>
        <p style="margin:0 0 12px;font-size:14px;color:#111827;font-weight:500">${feedbackTitle || 'Untitled feedback'}</p>
-       <div style="margin:0 0 12px;padding:12px;background-color:#f3f4f6;border-radius:8px;font-size:13px;color:#374151;border-left:3px solid #2563eb">${commentPreview || ''}</div>`,
+       <div style="margin:0 0 12px;padding:12px;background-color:#f3f4f6;border-radius:8px;font-size:13px;color:#374151;border-left:3px solid #3E5A75">${commentPreview || ''}</div>`,
       url,
       'View Feedback'
     );
@@ -164,7 +164,7 @@ export class EmailService {
       url,
       'Reset Password'
     );
-    return this.send({ to: toEmail, subject: `[PinPoint] Reset your password` });
+    return this.send({ to: toEmail, subject: `[PinPoint] Reset your password`, html });
   }
 
   async sendInvitationEmail({ toEmail, workspaceName, invitedByName, inviteUrl }) {
