@@ -10,7 +10,7 @@ let client = null;
 if (isConfigured) {
   client = new S3Client({
     endpoint: env.r2.endpoint,
-    region: 'auto',
+    region: env.r2.region,
     credentials: {
       accessKeyId: env.r2.accessKeyId,
       secretAccessKey: env.r2.secretAccessKey,
@@ -48,18 +48,20 @@ export class ScreenshotService {
     }
 
     try {
+      // WebP at 75 keep screenshots ~3x smaller than JPEG@80 at 1920px,
+      // which stretches the free-tier storage/egress budget considerably.
       const optimized = await sharp(buffer)
-        .resize(1920, undefined, { withoutEnlargement: true })
-        .jpeg({ quality: 80 })
+        .resize(1600, undefined, { withoutEnlargement: true })
+        .webp({ quality: 75 })
         .toBuffer();
 
-      const key = `screenshots/${workspaceId}/${feedbackId}.jpg`;
+      const key = `screenshots/${workspaceId}/${feedbackId}.webp`;
 
       await client.send(new PutObjectCommand({
         Bucket: env.r2.bucket,
         Key: key,
         Body: optimized,
-        ContentType: 'image/jpeg',
+        ContentType: 'image/webp',
         CacheControl: 'public, max-age=31536000',
       }));
 

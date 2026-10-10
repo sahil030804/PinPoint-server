@@ -73,6 +73,9 @@ export const env = {
 
   r2: {
     endpoint: process.env.R2_ENDPOINT,
+    // Vendor-neutral: R2 uses 'auto', Supabase Storage uses the project region
+    // (e.g. ap-south-1). Read from env so the same S3 code serves either backend.
+    region: process.env.R2_REGION || 'auto',
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
     bucket: process.env.R2_BUCKET_NAME || 'pinpoint-screenshots',
