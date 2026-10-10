@@ -16,7 +16,7 @@
 | Auth | JWT + API Keys |
 | Real-time | Socket.io |
 | Email | Resend |
-| File Storage | Cloudflare R2 |
+| File Storage | Supabase Storage (S3-compatible) |
 | Screenshots | html-to-image (client) + Puppeteer (server) |
 
 ## Project Structure

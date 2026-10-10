@@ -6,8 +6,8 @@ const allowedOrigins = [
   'http://localhost:4000',
 ];
 
-if (env.r2.publicUrl) {
-  allowedOrigins.push(env.r2.publicUrl);
+if (env.storage.publicUrl) {
+  allowedOrigins.push(env.storage.publicUrl);
 }
 
 export const corsOptions = {

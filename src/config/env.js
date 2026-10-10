@@ -71,15 +71,15 @@ export const env = {
     from: process.env.EMAIL_FROM || 'noreply@pinpoint.dev',
   },
 
-  r2: {
-    endpoint: process.env.R2_ENDPOINT,
-    // Vendor-neutral: R2 uses 'auto', Supabase Storage uses the project region
-    // (e.g. ap-south-1). Read from env so the same S3 code serves either backend.
-    region: process.env.R2_REGION || 'auto',
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-    bucket: process.env.R2_BUCKET_NAME || 'pinpoint-screenshots',
-    publicUrl: process.env.R2_PUBLIC_URL,
+  storage: {
+    endpoint: process.env.STORAGE_ENDPOINT,
+    // S3-compatible endpoint. Supabase Storage needs the project region
+    // (e.g. ap-south-1); Cloudflare R2 uses 'auto'.
+    region: process.env.STORAGE_REGION || 'auto',
+    accessKeyId: process.env.STORAGE_ACCESS_KEY_ID,
+    secretAccessKey: process.env.STORAGE_SECRET_ACCESS_KEY,
+    bucket: process.env.STORAGE_BUCKET_NAME || 'pinpoint-screenshots',
+    publicUrl: process.env.STORAGE_PUBLIC_URL,
   },
 
   company: {
