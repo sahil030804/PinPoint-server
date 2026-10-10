@@ -145,7 +145,9 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
       screenshotClientUrl, project.workspaceId, feedback.id
     ).then((serverUrl) => {
       if (serverUrl) {
-        feedback.update({ screenshot: { clientUrl: screenshotClientUrl, serverUrl } }).catch(() => {});
+        // Uploaded to object storage: keep the small CDN URL and drop the
+        // bulky inline base64 so DB rows and API payloads stay light.
+        feedback.update({ screenshot: { serverUrl } }).catch(() => {});
       }
     }).catch(() => {});
   }
