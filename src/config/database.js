@@ -13,9 +13,9 @@ const dbConfig = {
     idle: 10000,
   },
   dialectOptions: env.isProd && env.db.sslCaCert
-    ? { ssl: { require: true, rejectUnauthorized: true, ca: env.db.sslCaCert } }
+    ? { ssl: { require: true, rejectUnauthorized: true, ca: env.db.sslCaCert, servername: env.db.host } }
     : env.isProd
-      ? { ssl: { require: true, rejectUnauthorized: true } }
+      ? { ssl: { require: true, rejectUnauthorized: true, servername: env.db.host } }
       : {},
 };
 

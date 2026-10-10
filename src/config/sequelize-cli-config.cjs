@@ -32,7 +32,7 @@ const dbConfig = {
     dialect: 'postgres',
     logging: false,
     dialectOptions: {
-      ssl: { require: true, rejectUnauthorized: false },
+      ssl: { require: true, rejectUnauthorized: false, servername: process.env.DB_HOST },
     },
   },
 };
