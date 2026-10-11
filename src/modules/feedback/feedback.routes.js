@@ -24,7 +24,7 @@ function getSocketIo(req) {
   return req.app.get('io');
 }
 
-const ALLOWED_CACHE_PARAMS = new Set(['status', 'priority', 'assigneeId', 'pageUrl', 'search', 'q', 'sortBy', 'sortOrder', 'limit', 'offset', 'tag', 'projectId']);
+const ALLOWED_CACHE_PARAMS = new Set(['status', 'priority', 'assigneeId', 'pageUrl', 'search', 'q', 'sortBy', 'sortOrder', 'limit', 'offset', 'page', 'tag', 'projectId']);
 
 function buildCacheKey(prefix, params) {
   const { workspaceId, websiteId, ...rest } = params;
@@ -75,7 +75,25 @@ router.post('/widget/:projectId/feedback', validate(createFeedbackSchema), async
     });
   }
 
-  const website = project.Websites?.[0];
+  const websites = project.Websites || [];
+  // Attribute the feedback to the website it actually came from (projects
+  // can hold several sites); fall back to the newest one when unknown.
+  let website = null;
+  if (reqOrigin) {
+    try {
+      const reqUrl = new URL(reqOrigin);
+      website = websites.find((w) => {
+        try {
+          return new URL(w.url).origin === reqUrl.origin;
+        } catch {
+          return false;
+        }
+      }) || null;
+    } catch {
+      website = null;
+    }
+  }
+  website = website || websites[0];
   if (!website) throw new NotFoundError('No website found for this project');
 
   const workspace = project.Workspace;
@@ -253,11 +271,27 @@ router.use(authenticate);
 // ─── Workspace feedback listing ───
 router.get('/workspace/:workspaceId', requireWorkspaceAccess, paginationMiddleware, asyncHandler(async (req, res) => {
   const { page, limit, offset } = req.pagination;
-  const { status, priority, assigneeId, projectId, search, q } = req.query;
+  const { status, priority, assigneeId, projectId, search, q, sortBy, sortOrder } = req.query;
+
+  const SORT_FIELDS = {
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt',
+    title: 'title',
+    status: 'status',
+    priority: 'priority',
+  };
+  const sortField = SORT_FIELDS[sortBy] || 'createdAt';
+  const sortDir = String(sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+  // The Issue column falls back to the comment when a title is absent
+  // (widget feedback), so sort those rows by what the user actually sees.
+  const orderClause = sortField === 'title'
+    ? [[Sequelize.fn('COALESCE', Sequelize.col('title'), Sequelize.col('comment')), sortDir]]
+    : [[sortField, sortDir]];
 
   const cacheKey = buildCacheKey('feedback:workspace', {
     workspaceId: req.params.workspaceId,
     status, priority, assigneeId, projectId, search, q, page, limit,
+    sortBy: sortField, sortOrder: sortDir,
   });
 
   const cached = await cacheService.get(cacheKey);
@@ -301,7 +335,7 @@ router.get('/workspace/:workspaceId', requireWorkspaceAccess, paginationMiddlewa
       { model: User, as: 'assignee', attributes: ['id', 'name', 'email', 'avatarUrl'] },
       { model: User, as: 'reporter', attributes: ['id', 'name', 'email', 'avatarUrl'] },
     ],
-    order: [['createdAt', 'DESC']],
+    order: orderClause,
     limit,
     offset,
   });
@@ -409,11 +443,27 @@ router.get('/workspace/:workspaceId/export', requireWorkspaceAccess, asyncHandle
 // ─── Website feedback listing ───
 router.get('/website/:websiteId', requireWebsiteAccess, paginationMiddleware, asyncHandler(async (req, res) => {
   const { page, limit, offset } = req.pagination;
-  const { status, priority, assigneeId, search, q, tags } = req.query;
+  const { status, priority, assigneeId, search, q, tags, sortBy, sortOrder } = req.query;
+
+  const SORT_FIELDS = {
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt',
+    title: 'title',
+    status: 'status',
+    priority: 'priority',
+  };
+  const sortField = SORT_FIELDS[sortBy] || 'createdAt';
+  const sortDir = String(sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+  // The Issue column falls back to the comment when a title is absent
+  // (widget feedback), so sort those rows by what the user actually sees.
+  const orderClause = sortField === 'title'
+    ? [[Sequelize.fn('COALESCE', Sequelize.col('title'), Sequelize.col('comment')), sortDir]]
+    : [[sortField, sortDir]];
 
   const cacheKey = buildCacheKey('feedback:website', {
     websiteId: req.params.websiteId,
     status, priority, assigneeId, search, q, tags, page, limit,
+    sortBy: sortField, sortOrder: sortDir,
   });
 
   const cached = await cacheService.get(cacheKey);
@@ -447,7 +497,7 @@ router.get('/website/:websiteId', requireWebsiteAccess, paginationMiddleware, as
       { model: User, as: 'assignee', attributes: ['id', 'name', 'email', 'avatarUrl'] },
       { model: User, as: 'reporter', attributes: ['id', 'name', 'email', 'avatarUrl'] },
     ],
-    order: [['createdAt', 'DESC']],
+    order: orderClause,
     limit,
     offset,
   });

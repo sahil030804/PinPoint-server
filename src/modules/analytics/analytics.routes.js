@@ -18,6 +18,8 @@ router.get('/overview/:workspaceId', requireWorkspaceAccess, asyncHandler(async 
       COUNT(*) FILTER (WHERE status = 'new' OR status = 'open')::int AS "open",
       COUNT(*) FILTER (WHERE status = 'done' OR status = 'closed')::int AS "resolved",
       COUNT(*) FILTER (WHERE status = 'in_progress')::int AS "inProgress",
+      COUNT(*) FILTER (WHERE status = 'testing')::int AS "testing",
+      COUNT(*) FILTER (WHERE (status = 'done' OR status = 'closed') AND COALESCE(f.resolved_at, f.updated_at) >= date_trunc('month', NOW()))::int AS "resolvedThisMonth",
       COUNT(*) FILTER (WHERE priority = 'critical')::int AS "critical"
     FROM feedback f
     JOIN websites w ON f.website_id = w.id

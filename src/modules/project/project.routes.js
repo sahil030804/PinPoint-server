@@ -65,9 +65,9 @@ router.post('/workspace/:workspaceId', requireWorkspaceAccess, authorize('owner'
   const workspace = await Workspace.findByPk(req.params.workspaceId);
   if (!workspace) throw new NotFoundError('Workspace not found');
   const planLimits = PLAN_LIMITS[workspace.plan] || PLAN_LIMITS.free;
-  if (planLimits.websitesPerWorkspace !== Infinity) {
+  if (planLimits.projectsPerWorkspace !== Infinity) {
     const projectCount = await Project.count({ where: { workspaceId: req.params.workspaceId } });
-    if (projectCount >= planLimits.websitesPerWorkspace * 10) {
+    if (projectCount >= planLimits.projectsPerWorkspace) {
       return res.status(429).json({
         success: false,
         error: { code: 'USAGE_LIMIT_EXCEEDED', message: 'Project limit reached. Upgrade to Pro for unlimited projects.' },

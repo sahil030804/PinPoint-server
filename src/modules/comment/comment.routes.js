@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { sequelize, Comment, ActivityLog, Feedback, User, Website, Project } from '../../database/models/index.js';
+import { sequelize, Comment, ActivityLog, Feedback, User, Website, Project, WorkspaceMember } from '../../database/models/index.js';
 import { asyncHandler } from '../../common/utils/asyncHandler.js';
 import { success } from '../../common/utils/response.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
-import { addCommentSchema } from '../auth/auth.validation.js';
-import { NotFoundError } from '../../common/errors/AppError.js';
+import { addCommentSchema, updateCommentSchema } from '../auth/auth.validation.js';
+import { NotFoundError, AuthorizationError } from '../../common/errors/AppError.js';
 import { requireFeedbackAccess } from '../../common/middleware/authorizeWorkspace.js';
 import { notificationService } from '../../common/services/notification.service.js';
 import { emailService } from '../../common/services/email.service.js';
@@ -96,6 +96,49 @@ router.post('/feedback/:feedbackId', requireFeedbackAccess, validate(addCommentS
   }
 
   res.status(201).json(success(comment.comment));
+}));
+
+// Load a comment with its workspace context (for edit/delete authorization)
+async function loadCommentWithWorkspace(commentId, userId, req) {
+  const comment = await Comment.findByPk(commentId, {
+    include: [{
+      model: Feedback,
+      attributes: ['id', 'websiteId'],
+      include: [{
+        model: Website,
+        attributes: ['id', 'projectId'],
+        include: [{ model: Project, attributes: ['id', 'workspaceId'] }],
+      }],
+    }],
+  });
+  if (!comment) throw new NotFoundError('Comment not found');
+  const workspaceId = comment.Feedback?.Website?.Project?.workspaceId;
+  if (!workspaceId) throw new NotFoundError('Comment not found');
+  const membership = await WorkspaceMember.findOne({ where: { userId, workspaceId } });
+  if (!membership) throw new AuthorizationError('Not a member of this workspace');
+  req.membership = membership;
+  return comment;
+}
+
+// Edit a comment (author only)
+router.put('/:commentId', authenticate, validate(updateCommentSchema), asyncHandler(async (req, res) => {
+  const comment = await loadCommentWithWorkspace(req.params.commentId, req.user.id, req);
+  if (comment.userId !== req.user.id) {
+    throw new AuthorizationError('Only the author can edit this comment');
+  }
+  await comment.update({ body: req.body.body });
+  res.json(success(comment));
+}));
+
+// Delete a comment (author, or owner/admin of the workspace)
+router.delete('/:commentId', authenticate, asyncHandler(async (req, res) => {
+  const comment = await loadCommentWithWorkspace(req.params.commentId, req.user.id, req);
+  const privileged = ['owner', 'admin'].includes(req.membership.role);
+  if (comment.userId !== req.user.id && !privileged) {
+    throw new AuthorizationError('Only the author or a workspace admin can delete this comment');
+  }
+  await comment.destroy();
+  res.json(success({ deleted: true }));
 }));
 
 export { router as commentRoutes };

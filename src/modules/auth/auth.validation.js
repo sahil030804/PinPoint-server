@@ -100,6 +100,10 @@ export const addCommentSchema = z.object({
   body: z.string().min(1, 'Comment body is required'),
 });
 
+export const updateCommentSchema = z.object({
+  body: z.string().min(1, 'Comment body is required').max(5000),
+});
+
 export const inviteMemberSchema = z.object({
   email: z.string().email('Invalid email address'),
   role: z.enum(['admin', 'developer', 'viewer', 'client']).optional(),

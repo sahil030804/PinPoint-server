@@ -125,15 +125,21 @@ router.get('/:id/stats', requireWorkspaceAccess, asyncHandler(async (req, res) =
   const feedbackCount = await Feedback.count({
     include: [{
       model: Website,
-      include: [{ model: Project, where: { workspaceId: req.params.id } }],
+      required: true,
+      include: [{ model: Project, required: true, where: { workspaceId: req.params.id } }],
     }],
   });
 
   const websiteCount = await Website.count({
     include: [{
       model: Project,
+      required: true,
       where: { workspaceId: req.params.id },
     }],
+  });
+
+  const projectCount = await Project.count({
+    where: { workspaceId: req.params.id },
   });
 
   const memberCount = await WorkspaceMember.count({
@@ -145,6 +151,8 @@ router.get('/:id/stats', requireWorkspaceAccess, asyncHandler(async (req, res) =
     planLimits,
     usage: {
       feedback: { current: feedbackCount, limit: planLimits.feedbackPerMonth },
+      feedbackMonthly: { current: workspace.feedbackMonthlyCount ?? 0, limit: planLimits.feedbackPerMonth },
+      projects: { current: projectCount, limit: planLimits.projectsPerWorkspace },
       websites: { current: websiteCount, limit: planLimits.websitesPerWorkspace },
       members: { current: memberCount, limit: planLimits.membersPerWorkspace },
     },
